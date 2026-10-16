@@ -4,108 +4,138 @@
 
 ## 1. What We Are Building
 
-An agent that gives a court case a memory. It records every hearing, order, document, witness statement and deadline in a FalkorDB graph, then answers questions with sources, flags ignored court directions, and catches contradictions between what a party said at different times.
+An agent that gives a court case a memory, for **lawyers**. Every hearing, transcript, order and document is stored in a FalkorDB graph. The agent answers questions with exact sources, tracks court directions, and catches contradictions between what people said at different times.
 
 **Problem:** cases run for years across dozens of hearings. Directions get forgotten, lawyers change, and contradictory statements go unnoticed. The full story lives in people's heads and scattered files.
+
+**Scope:** Indian courts, civil and criminal. An FIR is just another document, so cases with and without police involvement share one model.
 
 ## 2. Tech Stack
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Database | **FalkorDB** (Docker) | Graph plus vector index on the same nodes |
-| Backend | **Node.js** (Express) | Official `falkordb` Node client |
-| Frontend | **React** | Chat, timeline and graph view |
-| LLM | OpenAI API | Claim extraction, summaries, hearing briefs |
-| Embeddings | OpenAI embedding model (e.g. `text-embedding-3-small`) | Vectors stored as properties on Claim nodes in FalkorDB, with a vector index. FalkorDB stores and searches vectors but does not generate them |
-| File storage | Cloud storage (S3 or similar) | FalkorDB stores only the file URL, not the file |
-| Deployment | Render / Railway / Vercel | Live demo preferred by the rules |
+| Graph + vector DB | **FalkorDB** (Docker) | Graph and vector indexes on the same nodes |
+| Server | Node.js, Express 5, TypeScript | Official `falkordb` client, zod validation |
+| Client | React 19, Vite, TypeScript | Case page, timeline, chat |
+| File storage | **ImageKit** | Original files only. Nodes keep `fileUrl` |
+| LLM + embeddings | OpenAI (`gpt-4o-mini`, `text-embedding-3-small`) | Extraction, OCR of images, answers |
+| PDF text | `unpdf` | Text per page. Scanned PDFs are out of scope for now |
 
-## 3. Graph Model
+## 3. Inputs
 
-### Nodes
-`Case`, `Hearing`, `Order`, `Task`, `Document`, `Transcript`, `Claim`, `Entity` (property, account, etc.), `Party`, `Lawyer`, `Judge`, `Witness`
+| Source | Uploaded by the lawyer as | Produces |
+|---|---|---|
+| **Transcript** | Text with a speaker label on every turn (`Judge: ...`). No timestamps | Numbered segments, then claims |
+| **Order sheet** | Document of type `order`, linked to its hearing | Directions, next date, order kind. **Orders come only from uploaded order sheets, never from transcripts** |
+| **Other documents** (plaint, written statement, FIR, affidavit, sale deed, chargesheet, deposition...) | File or pasted text, plus metadata (title, type, date, filed by, hearing) | Chunks with page and paragraph, then claims |
 
-`Party`, `Lawyer`, `Judge` and `Witness` can also share an `Actor` label so a Claim can point to any of them with one query pattern.
+## 4. Graph Model
+
+### People (each also has the `Person` label)
+| Node | Properties |
+|---|---|
+| `Party` | name. Role (plaintiff, defendant, complainant, accused...) is on the `PARTY_IN` edge |
+| `Lawyer` | name, enrolmentNo |
+| `Judge` | name |
+| `Witness` | name, code (PW1, DW2), witnessType (eye, police, expert...) |
+
+### Things
+| Node | Properties |
+|---|---|
+| `Case` | caseNumber, title, court, caseType (civil/criminal), stage, status |
+| `Hearing` | date, purpose, status (scheduled/held), adjourned, outcome |
+| `Document` | title, type, date, fileUrl, hash, status, orderKind (orders only), private (lawyer notes) |
+| `Chunk` | page, para, seq, text, embedding |
+| `Transcript` | version, current |
+| `Segment` | seq (turn number), speakerLabel, text, embedding |
+| `Direction` | text, dueDate, kind (direction/undertaking/costs), status (pending/complied/overdue) |
+| `Claim` | text, date, embedding |
+| `Subject` | name, type (property, money, event...) |
 
 ### Edges
 | Edge | Meaning |
 |---|---|
-| `(Case)-[:HAS_HEARING]->(Hearing)` | A case's hearing dates |
-| `(Case)-[:RELATED_TO]->(Case)` | Linked civil and criminal cases |
-| `(Party)-[:REPRESENTED_BY {from, to}]->(Lawyer)` | Overall representation, with dates for lawyer changes |
-| `(Party)-[:PARTY_IN]->(Hearing)` | Party was part of this hearing |
-| `(Lawyer)-[:APPEARED_IN]->(Hearing)` | Which lawyer was present on which day |
-| `(Hearing)-[:PRESIDED_BY]->(Judge)` | Judge for that hearing |
-| `(Hearing)-[:RESULTED_IN]->(Order)` | Order passed after the hearing |
-| `(Order)-[:DIRECTS]->(Task)` | A direction becomes a trackable task |
-| `(Task)-[:ASSIGNED_TO]->(Party)` | Who must do it |
-| `(Task)-[:FULFILLED_BY]->(Document)` | Created only when the matching document is filed |
-| `(Document)-[:FILED_AT]->(Hearing)` | Where a document was submitted |
-| `(Hearing)-[:RECORDED_IN]->(Transcript)` | Full timestamped record of the hearing |
-| `(Transcript)-[:INVOLVES]->(Actor)` | Who took part in the conversation |
-| `(Witness)-[:TESTIFIED_IN]->(Hearing)` | Witness appeared |
-| `(Witness)-[:CALLED_BY]->(Party)` | Which side the witness was for |
-| `(Document)-[:CONTAINS]->(Claim)` | Claims from filed documents |
-| `(Transcript)-[:CONTAINS]->(Claim)` | Claims from spoken statements |
-| `(Claim)-[:SPOKEN_BY]->(Actor)` | Who said it (party, lawyer, witness or judge) |
-| `(Claim)-[:MADE_IN]->(Hearing)` | Hearing where it was said or filed |
-| `(Claim)-[:ABOUT]->(Entity)` | The thing it concerns, such as the property |
-| `(Claim)-[:CONTRADICTS]->(Claim)` | Detected conflict |
+| `(Party)-[:PARTY_IN {role}]->(Case)` | Who the parties are |
+| `(Lawyer)-[:REPRESENTS {from, to}]->(Party)` | Representation, with dates when a lawyer changes |
+| `(Witness)-[:CALLED_BY]->(Party)` | Which side the witness is for |
+| `(Case)-[:LINKED_TO]->(Case)` | e.g. civil suit and criminal case on the same property |
+| `(Case)-[:HAS_HEARING]->(Hearing)` | Every date in court |
+| `(Hearing)-[:NEXT]->(Hearing)` | Timeline chain in date order |
+| `(Hearing)-[:PRESIDED_BY]->(Judge)` | Judge that day |
+| `(Person)-[:APPEARED_IN {present}]->(Hearing)` | Attendance |
+| `(Document)-[:BELONGS_TO]->(Case)` | Always |
+| `(Document)-[:SUBMITTED_IN]->(Hearing)` | When submitted at a hearing |
+| `(Document)-[:FILED_BY]->(Party)` | Who filed it |
+| `(Document)-[:HAS_CHUNK]->(Chunk)` | Text pieces with page and paragraph |
+| `(Hearing)-[:RECORDED_IN]->(Transcript)-[:HAS_SEGMENT]->(Segment)` | The discussion, turn by turn |
+| `(Segment)-[:SPOKEN_BY]->(Person)` | Speaker label resolved to a person |
+| `(Segment)-[:REFERS_TO]->(Document)` | A later hearing discussing a document |
+| `(Document {type:"order"})-[:GIVES]->(Direction)-[:TO]->(Person)` | Who must do what |
+| `(Direction)-[:COMPLIED_BY]->(Document)` | Added only when complied. Missing edge = not complied |
+| `(Chunk|Segment)-[:CONTAINS]->(Claim)` | Exact citation of each claim |
+| `(Claim)-[:MADE_BY]->(Person)`, `(Claim)-[:ABOUT]->(Subject)` | Who said it and what it concerns |
+| `(Claim)-[:CONTRADICTS|SUPPORTS {reason}]->(Claim)` | Fact-check results |
 
-### Design decisions
-- **No direct Party-to-Claim or Judge-to-Party edges.** Those links come from traversal (for example Claim → Witness → Party) and avoid duplicated data. A Party gets a direct `SPOKEN_BY` edge only when it made the statement itself (written statement, affidavit).
-- **Judge links only to Hearing**, so it is always clear which hearings each judge handled.
-- **Two levels of transcript data:** the full chronological `Transcript` (raw record, for citations) and extracted `Claim` nodes (for reasoning and contradiction checks).
+### Transcripts without timestamps
+- Indian courts rarely timestamp. The parser splits on speaker labels and numbers the turns 1, 2, 3 (`seq`). A statement runs until the next label.
+- Order inside a hearing = `seq`. Order across the case = hearing date, then `seq`.
+- Citation: "10 Mar 2021 · Turn 23 · Defendant's Counsel". Context = range query on `seq`.
+- Numbering never changes. A correction uploads a new transcript **version**; the old one is kept with `current: false`.
 
-## 4. Storing Text and Vectors Together
+## 5. Ingestion Pipeline
 
-- Each `Claim` (and each document chunk) keeps its **original text** and an **embedding** as properties on the same node.
-- Semantic search: embed the question, find the nearest Claims through a vector index, then traverse edges to the Hearing, Document and Speaker.
-- Answers always come from the **original text**. Embeddings are only the search index.
-- Images and PDFs live in cloud storage. Nodes hold a `file_url` property.
+```
+1. STORE      file -> ImageKit; Document {status:"uploaded", hash}. Same hash in the case -> return existing
+2. READ       PDF -> text per page | image -> OCR | pasted text. Transcript -> numbered segments
+3. CHUNK      paragraphs with page + para numbers -> Chunk nodes          status:"extracted"
+4. EMBED      chunks / segments (background job)                          status:"ready"
+5. UNDERSTAND LLM + zod schema: claims, directions (orders), subjects; match against existing graph
+6. NOTIFY     fact-check and compliance agents run on the new data
+```
 
-## 5. Agents
+Rules that keep the data healthy as it grows:
+- **Facts are append-only.** New documents add claims; changed stories show up as `CONTRADICTS` edges.
+- **Few mutable fields** (`Direction.status`, `Case.stage`, `Case.status`), each with `updatedBy`, `updatedAt`.
+- **Provenance everywhere:** derived nodes keep `sourceDocId` / `createdBy`, so one bad extraction can be deleted and re-run.
+- **Idempotent writes:** hash for files, `MERGE` on natural keys. Background jobs resume on server restart.
+- **One graph per firm** later (`selectGraph(firmId)`).
 
-1. **Intake agent:** takes in an order, filing, transcript or note. Extracts hearing details, directions, claims and the next date. Writes nodes and links them to existing ones. Turns directions into `Task` nodes.
-2. **Deadline and compliance agent:** checks open tasks on a schedule and flags directions with no `FULFILLED_BY` document across later hearings.
-3. **Hearing-brief agent:** before each hearing, produces a one-page brief of open tasks, recent hearings and contradictions, with a source for every line.
-4. **Handover agent (stretch):** builds a full case history for a new lawyer.
+## 6. Agents
 
-All agents read and write the same graph, so it acts as their shared memory.
+All agents read and write the same graph, so it is their shared memory.
 
-## 6. Key Queries
+1. **Intake agent:** runs the pipeline above, extracts claims and directions, links them to existing people and subjects.
+2. **Fact-check agent:** for each new claim, finds earlier claims on the same subject (graph + vector), decides `CONTRADICTS` / `SUPPORTS` with a reason.
+3. **Compliance agent:** links new documents to pending directions (`COMPLIED_BY`), flags overdue ones. Mostly Cypher.
+4. **Case Q&A agent:** tool-using agent (`searchClaims`, `getTimeline`, `getHearingOrders`, `getClaimsByPerson`, `getDirections`, `getLinkedCases`, `getContradictions`). Every line cited, path shown.
+5. **Hearing-brief agent:** one-page brief before a hearing from the other agents' output.
+6. **Handover agent (stretch):** full case history for a new lawyer.
 
-- **Where was this said?** Vector search over Claims, then traverse to Hearing and Document.
-- **Who said it?** Claim → `SPOKEN_BY` → Actor.
-- **All claims for a party:** direct claims, plus Party ← `CALLED_BY` ← Witness ← `SPOKEN_BY` ← Claim, plus Party → `REPRESENTED_BY` → Lawyer ← `SPOKEN_BY` ← Claim.
-- **Ignored directions:** Tasks with no `FULFILLED_BY` edge and a due date in the past.
-- **Contradictions:** Claims about the same Entity by the same Actor with different facts.
-
-## 7. Build Plan (Oct 15-18)
+## 7. Build Plan
 
 | Day | Goal |
 |---|---|
-| **Day 1 (Oct 15)** | Set up FalkorDB in Docker, Express skeleton, graph schema, synthetic case data (one 5-year property dispute) |
-| **Day 2 (Oct 16)** | Intake agent: text to nodes, claim extraction with embeddings, task creation, deadline check |
-| **Day 3 (Oct 17)** | Hearing brief with citations, contradiction detection, semantic search, React chat and timeline view |
-| **Day 4 (Oct 18)** | Graph visualization, deploy, demo video, README. Submit before 11:59 PM IST. Write the blog post for the side prize |
+| **Day 1 (Oct 15)** | Repo, Docker FalkorDB, Express skeleton, ImageKit |
+| **Day 2 (Oct 16)** | Graph schema, cases/people/hearings, document + transcript ingestion, embeddings, intake extraction |
+| **Day 3 (Oct 17)** | Q&A agent, fact-check, compliance, React case page + chat + timeline, seed case |
+| **Day 4 (Oct 18)** | Hearing brief, graph view, deploy, demo video, README, blog post. Submit before 11:59 PM IST |
 
 ## 8. Demo Plan
 
-Use one synthetic case with three planted issues:
-1. A court direction that was ignored (missing sale deed).
-2. A contradiction between a 2020 written statement and a 2023 affidavit.
-3. A linked criminal case for the same property.
+One synthetic property dispute with a linked criminal case (FIR as a document) and three planted issues:
+1. An ignored direction (sale deed never filed).
+2. A contradiction between the 2020 written statement and a 2023 affidavit.
+3. A witness whose court testimony contradicts the FIR.
 
-Flow: upload orders and watch the graph grow, show an overdue-task alert, ask a natural-language question and show the source hearing, generate the hearing brief with the contradiction, and show the path the agent followed.
+Flow: upload documents and a transcript and watch the graph grow, see the overdue alert, ask "list the orders from the last hearing" and "what has the defendant said about the payment?", generate the hearing brief, show the path the agent followed.
 
 ## 9. Scope and Risks
 
-- **Keep the MVP small:** intake, compliance flag, hearing brief, semantic search. The handover agent is a stretch goal. Voice input and speech-to-text are out of scope: all input is text (order sheets, filings, and typed hearing transcripts).
-- **Contradiction detection** depends on reliable claim extraction. Make it work well on the planted examples rather than promising it on arbitrary documents.
-- **Not legal advice:** present it as a case organizer and memory aid.
-- **Privacy:** use only synthetic data in the demo. One isolated graph per user or firm is the production answer.
-- **Input quality:** real court documents may be scanned or in regional languages. OCR and translation are future work.
+- **MVP:** ingestion, Q&A, fact-check, compliance, brief. Handover, interim applications and framed issues are stretch.
+- **Contradiction detection** depends on claim extraction. Make it work well on the planted examples.
+- **Not legal advice:** a case organizer and memory aid.
+- **Privacy:** synthetic data only. Lawyer notes are `private` and never mixed with court record.
+- **Input quality:** scanned PDFs, regional languages and audio are future work.
 
 ## 10. Hackathon Checklist
 

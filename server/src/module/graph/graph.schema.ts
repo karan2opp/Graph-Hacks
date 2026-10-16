@@ -1,50 +1,47 @@
 import { env } from "../../config/env.js";
 import { getGraph } from "../../common/db/index.js";
 
-/** Node labels from the graph model in plan.md. Every node carries a unique `id`. */
+/** People. Every one of them also carries the `Person` label (see plan.md section 4). */
+export const PERSON_KINDS = ["Party", "Lawyer", "Judge", "Witness"] as const;
+export type PersonKind = (typeof PERSON_KINDS)[number];
+
 export const NODE_LABELS = [
   "Case",
   "Hearing",
-  "Order",
-  "Task",
   "Document",
+  "Chunk",
   "Transcript",
+  "Segment",
+  "Direction",
   "Claim",
-  "Entity",
-  "Actor", // shared label on Party / Lawyer / Judge / Witness
-  "Party",
-  "Lawyer",
-  "Judge",
-  "Witness",
+  "Subject",
+  "Person",
+  ...PERSON_KINDS,
 ] as const;
 export type NodeLabel = (typeof NODE_LABELS)[number];
 
-/** Relationship types from the graph model in plan.md. */
-export const EDGE_TYPES = [
-  "HAS_HEARING",
-  "RELATED_TO",
-  "REPRESENTED_BY",
-  "PARTY_IN",
-  "APPEARED_IN",
-  "PRESIDED_BY",
-  "RESULTED_IN",
-  "DIRECTS",
-  "ASSIGNED_TO",
-  "FULFILLED_BY",
-  "FILED_AT",
-  "RECORDED_IN",
-  "INVOLVES",
-  "TESTIFIED_IN",
-  "CALLED_BY",
-  "CONTAINS",
-  "SPOKEN_BY",
-  "MADE_IN",
-  "ABOUT",
-  "CONTRADICTS",
-] as const;
-export type EdgeType = (typeof EDGE_TYPES)[number];
+/** Nodes whose text is searchable by meaning. Each gets a vector index on `embedding`. */
+export const VECTOR_LABELS = ["Chunk", "Segment", "Claim"] as const;
 
-const isAlreadyIndexed = (e: unknown) => /already (indexed|exists)/i.test(String((e as Error)?.message));
+/** Extra range indexes for the lookups the API and agents do most. */
+const PROPERTY_INDEXES: [NodeLabel, string][] = [
+  ["Case", "caseNumber"],
+  ["Hearing", "caseId"],
+  ["Hearing", "date"],
+  ["Document", "caseId"],
+  ["Document", "hash"],
+  ["Document", "status"],
+  ["Chunk", "documentId"],
+  ["Transcript", "hearingId"],
+  ["Segment", "transcriptId"],
+  ["Segment", "seq"],
+  ["Person", "caseId"],
+  ["Person", "nameKey"],
+  ["Direction", "status"],
+  ["Direction", "dueDate"],
+];
+
+const isAlreadyIndexed = (e: unknown) => /already indexed/i.test(String((e as Error)?.message));
 
 async function ensure(query: string) {
   try {
@@ -59,14 +56,14 @@ export async function initGraphSchema(): Promise<void> {
   for (const label of NODE_LABELS) {
     await ensure(`CREATE INDEX FOR (n:${label}) ON (n.id)`);
   }
-  // Task due dates (overdue-direction check) and hearing dates (timeline ordering).
-  await ensure("CREATE INDEX FOR (n:Task) ON (n.dueDate)");
-  await ensure("CREATE INDEX FOR (n:Hearing) ON (n.date)");
-
-  // Embeddings live on the same nodes as the original text (see plan.md section 4).
-  await ensure(
-    `CREATE VECTOR INDEX FOR (n:Claim) ON (n.embedding) OPTIONS {dimension: ${env.EMBEDDING_DIMENSIONS}, similarityFunction: 'cosine'}`,
-  );
-
-  console.log("FalkorDB schema ready (indexes created)");
+  for (const [label, prop] of PROPERTY_INDEXES) {
+    await ensure(`CREATE INDEX FOR (n:${label}) ON (n.${prop})`);
+  }
+  // Vector search returns cosine *distance*: lower score = closer match.
+  for (const label of VECTOR_LABELS) {
+    await ensure(
+      `CREATE VECTOR INDEX FOR (n:${label}) ON (n.embedding) OPTIONS {dimension: ${env.EMBEDDING_DIMENSIONS}, similarityFunction: 'cosine'}`,
+    );
+  }
+  console.log("FalkorDB schema ready");
 }
