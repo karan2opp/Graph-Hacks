@@ -115,6 +115,8 @@ Every response, success or error, has the same shape (see `ApiResponse` in `serv
 | GET | `/cases/:caseId/directions?status=pending\|overdue\|complied\|in_force\|vacated` | Court directions with assignees, deadline, source order and the evidence of compliance |
 | GET | `/cases/:caseId/compliance` | Overdue, due before the next hearing, complied (on time / late), in force, vacated, and a record per party |
 | PATCH | `/directions/:directionId` | Lawyer override `{ status: complied\|not_complied\|vacated\|auto, note }` (`auto` hands it back to the agent) |
+| POST | `/cases/:caseId/ask` | Ask the case `{ question, conversationId?, hearingId? }` → answer with `[S#]` refs, `citations`, `trace` (tools and graph patterns used), `graph` (evidence subgraph) |
+| GET | `/cases/:caseId/conversations`, `/conversations/:conversationId` | Stored conversations with each answer's citations and trace |
 | POST | `/documents/:documentId/analyze`, `/transcripts/:transcriptId/analyze` | Re-run the intake agent (replaces earlier results) |
 | GET | `/cases/:caseId/contradictions?category=self\|same_side\|record` | Conflicting statements with both citations and the reason |
 | GET | `/cases/:caseId/disputes` | Points where the two sides disagree |
@@ -143,6 +145,16 @@ Paths shown without a prefix are under `/api/v1` as well.
    - a new filing is matched against pending directions given to the party who filed it (`(Direction)-[:TO]->(Party)<-[:FILED_BY]-(Document)`), producing `COMPLIED_BY {onTime, daysLate}` from the filing date (`filedOn`, not the document's own date: a 2019 sale deed filed in 2021);
    - a new order is read for what it records about earlier directions: `COMPLIED_BY` (evidence: order), `NONCOMPLIANCE_RECORDED_IN`, or `VACATED_BY`; its own new directions are back-filled against documents already on file;
    - state is computed on read: lawyer override, then vacated, complied, in force (status quo, undertakings), overdue, pending. A lawyer's override is never changed by the agent and survives re-analysis of the order.
+
+### Case Q&A agent
+
+`POST /cases/:caseId/ask` runs a tool-calling loop. The model never writes Cypher; it chooses among fixed graph tools:
+`search_case` (vector search over claims, document passages and transcript turns), `get_timeline`, `get_hearing` (orders and their directions), `get_people`, `get_claims` (by person and/or subject, including what their lawyer and witnesses said), `get_contradictions`, `get_disputes`, `get_directions`, `get_compliance`, `read_transcript`, `read_document`, `get_linked_cases`.
+
+- **Citations it cannot fake:** every item a tool returns gets a ref (`S1`, `S2`...) registered on the server. Only registered refs resolve to a source (document page/para or hearing turn).
+- **The path it took:** `trace` lists each tool call with the graph pattern it walked; `graph` is the evidence subgraph of the cited items (claim → person, subject, source; `CONTRADICTS`/`SUPPORTS` between them; direction → order, assignees, `COMPLIED_BY`).
+- **Memory across sessions:** conversations are stored in FalkorDB as `(Case)-[:HAS_CONVERSATION]->(Conversation)-[:HAS_MESSAGE]->(Message)-[:CITES]->(…)`, so follow-ups ("who has to comply with those?") resolve against earlier turns.
+- `hearingId` in the request makes "this hearing" mean the hearing open in the app.
 
 Transcripts are split into turns on `Speaker: text` lines and numbered 1, 2, 3, since Indian court transcripts rarely have timestamps. Labels like "Court", "Ld. Counsel for Defendant", "PW1" or "Plaintiff" are matched to people in the case. Unmatched labels are reported and can be fixed with `PATCH /transcripts/:id/speakers`.
 
