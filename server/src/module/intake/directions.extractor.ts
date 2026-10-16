@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { generateStructured } from "../../common/ai/index.js";
 import { nowIso, queryOne, runQuery } from "../../common/db/index.js";
+import { nameKey } from "../../common/utils/index.js";
 import { createHearing } from "../hearing/index.js";
 import { batchBlocks, describePeople, loadPeople } from "./intake.context.js";
 import type { SourceBlock } from "./claims.extractor.js";
@@ -40,6 +41,12 @@ Rules:
   "Notice be issued to the defendant" is a step for the plaintiff (to take steps) unless stated otherwise.
 - dueDate: an explicit date, or computed from the ORDER DATE for "within 2 weeks", "within 30 days".
   "Before / on the next date" means the next hearing date. Null for standing obligations (status quo).
+- ALREADY IN FORCE lists obligations from earlier orders. If this order only continues one of them
+  ("status quo to continue", "interim order to continue"), do not list it again. An obligation that is
+  not in that list is new, even if it says "till further orders".
+- Do not list statements of what already happened ("process fee has been filed", "notice served").
+- Lifting or ending an earlier obligation ("status quo stands vacated", "interim order discharged") is
+  not a direction. Do not list it.
 - nextHearing: the date the matter is "put up" / "listed" / "adjourned to", with its purpose.
 - Dates in orders are usually DD.MM.YYYY. Always answer in YYYY-MM-DD.`;
 
@@ -55,8 +62,17 @@ export async function extractDirections(order: {
   orderDate: string | null;
   hearingId: string | null;
   blocks: SourceBlock[];
-}): Promise<{ directions: number; nextHearingId: string | null }> {
+}): Promise<{ directionIds: string[]; nextHearingId: string | null }> {
   const people = await loadPeople(order.caseId);
+  const inForce = await runQuery<{ text: string; orderDate: string | null }>(
+    `MATCH (d:Direction {caseId: $caseId})
+     WHERE d.sourceId <> $documentId AND d.kind IN ['stay', 'undertaking'] AND NOT (d)-[:VACATED_BY]->()
+     RETURN d.text AS text, d.orderDate AS orderDate`,
+    { caseId: order.caseId, documentId: order.documentId },
+  );
+  const inForceText = inForce.length
+    ? inForce.map((d) => `- ${d.text} (order of ${d.orderDate ?? "?"})`).join("\n")
+    : "(none)";
   const personByRef = new Map(people.map((p) => [p.ref, p.id]));
 
   const batches = batchBlocks(order.blocks, 20000); // orders are short; normally one call
@@ -67,7 +83,7 @@ export async function extractDirections(order: {
         orderSchema,
         "court_order",
         SYSTEM,
-        `ORDER: ${order.title}\nORDER DATE: ${order.orderDate ?? "unknown"}\n\nPEOPLE IN THE CASE:\n${describePeople(people)}\n\nORDER TEXT:\n${batch.map((b) => `[${b.ref}] ${b.label}\n${b.text}`).join("\n\n")}`,
+        `ORDER: ${order.title}\nORDER DATE: ${order.orderDate ?? "unknown"}\n\nPEOPLE IN THE CASE:\n${describePeople(people)}\n\nALREADY IN FORCE:\n${inForceText}\n\nORDER TEXT:\n${batch.map((b) => `[${b.ref}] ${b.label}\n${b.text}`).join("\n\n")}`,
       ),
     );
   }
@@ -78,6 +94,28 @@ export async function extractDirections(order: {
   const assignees = (refs: string[], text: string) => {
     const ids = refs.map((ref) => personByRef.get(ref)).filter((id): id is string => Boolean(id));
     return ids.length || !/\b(the|both|all)\s+parties\b/i.test(text) ? ids : partyIds;
+  };
+
+  // A lawyer's manual status survives re-analysis. The model may word a direction slightly
+  // differently each time, so match on the same kind plus overlapping words, not exact text.
+  const manual = await runQuery<{ text: string; kind: string; status: string; note: string | null; at: string }>(
+    `MATCH (d:Direction {sourceId: $documentId}) WHERE d.manualStatus IS NOT NULL
+     RETURN d.text AS text, d.kind AS kind, d.manualStatus AS status, d.manualNote AS note, d.manualAt AS at`,
+    { documentId: order.documentId },
+  );
+  const words = (s: string) => new Set(nameKey(s).split(" ").filter((w) => w.length > 2));
+  const overlap = (a: Set<string>, b: Set<string>) =>
+    [...a].filter((w) => b.has(w)).length / Math.max(1, new Set([...a, ...b]).size);
+  const unclaimed = [...manual];
+  const carryOver = (text: string, kind: string) => {
+    const w = words(text);
+    const best = unclaimed
+      .filter((m) => m.kind === kind)
+      .map((m) => ({ m, score: overlap(w, words(m.text)) }))
+      .sort((a, b) => b.score - a.score)[0];
+    if (!best || best.score < 0.4) return null;
+    unclaimed.splice(unclaimed.indexOf(best.m), 1);
+    return { status: best.m.status, note: best.m.note, at: best.m.at };
   };
 
   const rows = results.flatMap((r) =>
@@ -91,6 +129,7 @@ export async function extractDirections(order: {
         dueDate: isDate(d.dueDate) ? d.dueDate : null,
         dueText: d.dueText,
         assignedTo: assignees(d.assignedTo, d.text),
+        manual: carryOver(d.text, d.kind),
       })),
   );
 
@@ -100,7 +139,8 @@ export async function extractDirections(order: {
      MATCH (o:Document {id: $documentId}), (ch:Chunk {id: row.chunkId})
      CREATE (o)-[:GIVES]->(d:Direction {id: row.id, caseId: $caseId, sourceId: $documentId, hearingId: $hearingId,
        text: row.text, kind: row.kind, dueDate: row.dueDate, dueText: row.dueText, orderDate: $orderDate,
-       status: 'pending', createdBy: 'intake-agent', createdAt: $now, updatedAt: $now}),
+       status: 'pending', manualStatus: row.manual.status, manualNote: row.manual.note, manualAt: row.manual.at,
+       createdBy: 'intake-agent', createdAt: $now, updatedAt: $now}),
        (ch)-[:CONTAINS]->(d)
      WITH d, row
      UNWIND (CASE WHEN size(row.assignedTo) = 0 THEN [NULL] ELSE row.assignedTo END) AS pid
@@ -150,5 +190,5 @@ export async function extractDirections(order: {
       });
     }
   }
-  return { directions: rows.length, nextHearingId };
+  return { directionIds: rows.map((r) => r.id), nextHearingId };
 }

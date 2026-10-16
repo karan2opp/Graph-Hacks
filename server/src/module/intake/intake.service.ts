@@ -60,32 +60,3 @@ export async function listSubjects(caseId: string) {
     { caseId },
   );
 }
-
-/**
- * Directions with their order, assignees and deadline state. A direction is `complied` when it has a
- * COMPLIED_BY edge, `overdue` when its due date has passed without one, otherwise `pending`.
- */
-export async function listDirections(caseId: string, status?: "pending" | "overdue" | "complied") {
-  await requireCase(caseId);
-  const today = new Date().toISOString().slice(0, 10);
-  const rows = await runQuery<{ state: string } & Record<string, unknown>>(
-    `MATCH (o:Document)-[:GIVES]->(d:Direction {caseId: $caseId})
-     OPTIONAL MATCH (d)-[:TO]->(p:Person)
-     OPTIONAL MATCH (ch:Chunk)-[:CONTAINS]->(d)
-     OPTIONAL MATCH (d)-[:COMPLIED_BY]->(cd:Document)
-     OPTIONAL MATCH (h:Hearing {id: d.hearingId})
-     WITH d, o, ch, h, cd, collect(DISTINCT {id: p.id, name: p.name}) AS assignees
-     WITH d, o, ch, h, cd, assignees,
-          CASE WHEN cd IS NOT NULL THEN 'complied'
-               WHEN d.dueDate IS NOT NULL AND d.dueDate < $today THEN 'overdue'
-               ELSE 'pending' END AS state
-     WHERE $status IS NULL OR state = $status
-     RETURN d {.id, .text, .kind, .dueDate, .dueText, .orderDate} AS direction, state,
-            [a IN assignees WHERE a.id IS NOT NULL] AS assignedTo,
-            {documentId: o.id, title: o.title, page: ch.page, paraLabel: ch.paraLabel, hearingDate: h.date} AS order,
-            CASE WHEN cd IS NULL THEN NULL ELSE {id: cd.id, title: cd.title} END AS compliedBy
-     ORDER BY d.dueDate, d.orderDate`,
-    { caseId, status: status ?? null, today },
-  );
-  return rows;
-}

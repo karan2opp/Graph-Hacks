@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { mediaRouter } from "./common/media/index.js";
 import { caseRouter } from "./module/case/index.js";
+import { complianceRouter } from "./module/compliance/index.js";
 import { documentRouter } from "./module/document/index.js";
 import { factCheckRouter } from "./module/factcheck/index.js";
 import { healthRouter } from "./module/health/health.routes.js";
@@ -19,3 +20,4 @@ apiRouter.use(documentRouter);
 apiRouter.use(transcriptRouter);
 apiRouter.use(intakeRouter);
 apiRouter.use(factCheckRouter);
+apiRouter.use(complianceRouter);

@@ -1,5 +1,6 @@
 import { isAIEnabled } from "../../common/ai/index.js";
 import { nowIso, queryOne, runQuery } from "../../common/db/index.js";
+import { checkDocument, checkNewDirections, checkOrder } from "../compliance/compliance.agent.js";
 import { factCheckClaims, RECORD_TYPES } from "../factcheck/factcheck.agent.js";
 import { enqueue } from "../ingestion/index.js";
 import { extractClaims, type SourceBlock } from "./claims.extractor.js";
@@ -32,6 +33,16 @@ async function factCheck(caseId: string, claimIds: string[]) {
   } catch (e) {
     console.error("[fact-check] failed:", (e as Error).message);
     return { factcheckError: (e as Error).message };
+  }
+}
+
+/** Hands new documents and directions to the compliance agent. Its failure does not undo the extraction. */
+async function compliance(work: () => Promise<number>) {
+  try {
+    return { complianceLinks: await work(), complianceError: null };
+  } catch (e) {
+    console.error("[compliance] failed:", (e as Error).message);
+    return { complianceError: (e as Error).message };
   }
 }
 
@@ -90,7 +101,14 @@ export async function analyzeDocument(documentId: string): Promise<void> {
         hearingId: doc.hearingId,
         blocks,
       });
-      return { directionCount: r.directions };
+      // What this order records about earlier directions, and whether its own new directions
+      // were already met by documents on file.
+      const links = await compliance(
+        async () =>
+          (await checkOrder(doc.caseId, documentId, r.directionIds)) +
+          (await checkNewDirections(doc.caseId, r.directionIds)),
+      );
+      return { directionCount: r.directionIds.length, ...links };
     }
     const claimIds = await extractClaims({
       caseId: doc.caseId,
@@ -105,7 +123,11 @@ export async function analyzeDocument(documentId: string): Promise<void> {
       forceMadeBy: PLEADINGS.includes(doc.type),
       blocks,
     });
-    return { claimCount: claimIds.length, ...(await factCheck(doc.caseId, claimIds)) };
+    return {
+      claimCount: claimIds.length,
+      ...(await factCheck(doc.caseId, claimIds)),
+      ...(await compliance(() => checkDocument(doc.caseId, documentId))),
+    };
   });
 }
 

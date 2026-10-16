@@ -5,7 +5,7 @@ import { ApiError, ApiRequest, ApiResponse, idParam } from "../../common/utils/i
 import { queryOne } from "../../common/db/index.js";
 import { caseIdParams } from "../case/index.js";
 import { analyzeDocument, analyzeTranscript } from "./intake.jobs.js";
-import { listClaims, listDirections, listSubjects, type ClaimFilter } from "./intake.service.js";
+import { listClaims, listSubjects, type ClaimFilter } from "./intake.service.js";
 
 export const intakeRouter = Router();
 
@@ -15,7 +15,6 @@ const claimsQuery = z.object({
   sourceId: idParam.optional(),
   includeSuperseded: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
 });
-const directionsQuery = z.object({ status: z.enum(["pending", "overdue", "complied"]).optional() });
 
 /** GET /cases/:caseId/claims?personId=&subjectId=&sourceId=&includeSuperseded= */
 intakeRouter.get("/cases/:caseId/claims", validate({ params: caseIdParams, query: claimsQuery }), async (req, res) => {
@@ -28,16 +27,6 @@ intakeRouter.get("/cases/:caseId/subjects", validate({ params: caseIdParams }), 
   const { caseId } = ApiRequest.from<unknown, unknown, { caseId: string }>(req).params;
   ApiResponse.ok(await listSubjects(caseId)).send(res);
 });
-
-/** GET /cases/:caseId/directions?status=pending|overdue|complied */
-intakeRouter.get(
-  "/cases/:caseId/directions",
-  validate({ params: caseIdParams, query: directionsQuery }),
-  async (req, res) => {
-    const r = ApiRequest.from<unknown, { status?: "pending" | "overdue" | "complied" }, { caseId: string }>(req);
-    ApiResponse.ok(await listDirections(r.params.caseId, r.query.status)).send(res);
-  },
-);
 
 /** POST /documents/:documentId/analyze  -> re-run the intake agent (waits for the result) */
 intakeRouter.post(
