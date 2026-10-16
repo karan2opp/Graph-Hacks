@@ -11,7 +11,20 @@ export interface ExtractedText {
 /** Average characters per page below which a PDF is treated as scanned (image only). */
 const MIN_CHARS_PER_PAGE = 40;
 
+/**
+ * Never throws for unreadable content: a corrupt PDF or an image the OCR model rejects is
+ * still stored, with a note saying why it has no text.
+ */
 export async function extractPages(buffer: Buffer, mimeType: string): Promise<ExtractedText> {
+  try {
+    return await read(buffer, mimeType);
+  } catch (e) {
+    const kind = mimeType === "application/pdf" ? "PDF" : mimeType.startsWith("image/") ? "image" : "file";
+    return { pages: [], note: `Could not read text from this ${kind}: ${(e as Error).message}` };
+  }
+}
+
+async function read(buffer: Buffer, mimeType: string): Promise<ExtractedText> {
   if (mimeType === "application/pdf") {
     const { text, totalPages } = await extractText(new Uint8Array(buffer), { mergePages: false });
     const chars = text.reduce((n, p) => n + p.trim().length, 0);
