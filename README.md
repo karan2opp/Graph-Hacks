@@ -110,6 +110,10 @@ Every response, success or error, has the same shape (see `ApiResponse` in `serv
 | GET | `/hearings/:hearingId/transcript?from=&to=&version=` | Numbered turns with resolved speakers |
 | GET | `/hearings/:hearingId/transcripts` | All versions |
 | PATCH | `/transcripts/:transcriptId/speakers` | Map a speaker label to a person (turn numbers never change) |
+| GET | `/cases/:caseId/claims?personId=&subjectId=&sourceId=` | Claims with who said it, about what, and the exact source (page/para or hearing turn) |
+| GET | `/cases/:caseId/subjects` | What the case is about (property, payments, documents) with claim counts |
+| GET | `/cases/:caseId/directions?status=pending\|overdue\|complied` | Court directions with assignees, deadlines and source order |
+| POST | `/documents/:documentId/analyze`, `/transcripts/:transcriptId/analyze` | Re-run the intake agent (replaces earlier results) |
 
 Paths shown without a prefix are under `/api/v1` as well.
 
@@ -119,6 +123,10 @@ Paths shown without a prefix are under `/api/v1` as well.
 2. **Read:** PDFs are read page by page, images through OpenAI vision OCR, pasted text as is (a form feed starts a new page). Scanned PDFs and videos are stored without text.
 3. **Chunk:** paragraph-sized chunks keep `page`, `para` and the document's own paragraph number (`paraLabel`).
 4. **Embed:** a background job embeds chunks and transcript turns. Status moves from `extracted` to `embedding` to `ready`. Without `OPENAI_API_KEY` it waits, and resumes on the next boot.
+5. **Analyse (intake agent):** the LLM reads each source with the case's people and existing subjects as context (short refs like `P1`, `S1`, so answers map back to graph nodes):
+   - documents and transcript turns become `Claim` nodes, linked to who made them (`MADE_BY`, `ON_BEHALF_OF`), what they are about (`ABOUT` a `Subject`) and where they came from (`CONTAINS` from the chunk or turn). Quotes are checked against the source text.
+   - orders become `Direction` nodes with assignees and computed due dates, and the next date of hearing is scheduled automatically.
+   - analysis runs one source at a time, so a later document reuses the subjects an earlier one created. That is what lets a 2021 denial and a 2023 admission land on the same payment.
 
 Transcripts are split into turns on `Speaker: text` lines and numbered 1, 2, 3, since Indian court transcripts rarely have timestamps. Labels like "Court", "Ld. Counsel for Defendant", "PW1" or "Plaintiff" are matched to people in the case. Unmatched labels are reported and can be fixed with `PATCH /transcripts/:id/speakers`.
 
