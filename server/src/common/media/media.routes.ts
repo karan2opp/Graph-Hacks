@@ -1,23 +1,14 @@
 import { Router } from "express";
-import multer from "multer";
 import { z } from "zod";
 import { validate } from "../middleware/index.js";
 import { ApiError, ApiRequest, ApiResponse } from "../utils/index.js";
 import { deleteMedia, getClientUploadAuth, uploadMedia } from "./imagekit.js";
-
-const ALLOWED = /^(image|video)\/|^application\/pdf$/;
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) =>
-    ALLOWED.test(file.mimetype) ? cb(null, true) : cb(ApiError.badRequest("Only images, videos and PDFs are allowed")),
-});
+import { uploadSingle } from "./upload.js";
 
 export const mediaRouter = Router();
 
 /** POST /api/v1/media/upload  (multipart, field "file") */
-mediaRouter.post("/upload", upload.single("file"), async (req, res) => {
+mediaRouter.post("/upload", uploadSingle(), async (req, res) => {
   const { file } = ApiRequest.from(req);
   if (!file) throw ApiError.badRequest("Attach a file in the 'file' field");
   const media = await uploadMedia(file);

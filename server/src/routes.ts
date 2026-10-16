@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { mediaRouter } from "./common/media/index.js";
 import { caseRouter } from "./module/case/index.js";
+import { documentRouter } from "./module/document/index.js";
 import { hearingRouter } from "./module/hearing/index.js";
 import { healthRouter } from "./module/health/health.routes.js";
 
@@ -11,3 +12,4 @@ apiRouter.use("/health", healthRouter);
 apiRouter.use("/media", mediaRouter);
 apiRouter.use(caseRouter);
 apiRouter.use(hearingRouter);
+apiRouter.use(documentRouter);

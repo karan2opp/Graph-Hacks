@@ -14,6 +14,8 @@ export interface UploadedMedia {
 
 let client: ImageKit | null = null;
 
+export const isImageKitEnabled = () => Boolean(env.IMAGEKIT_PRIVATE_KEY);
+
 function getClient(): ImageKit {
   if (!env.IMAGEKIT_PRIVATE_KEY) {
     throw ApiError.serviceUnavailable("ImageKit is not configured (set IMAGEKIT_PRIVATE_KEY)");
