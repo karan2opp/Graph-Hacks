@@ -103,7 +103,7 @@ Every response, success or error, has the same shape (see `ApiResponse` in `serv
 | POST / GET | `/cases/:caseId/people` | Add / list parties, lawyers, judges, witnesses |
 | POST / GET | `/cases/:caseId/hearings` | Add a hearing / timeline in date order |
 | GET / PATCH | `/hearings/:hearingId` | Hearing with judge, appearances, documents, transcript, previous / next |
-| POST | `/cases/:caseId/documents` | Multipart `file` or JSON `text`, plus title, type, date, hearingId, filedById, orderKind |
+| POST | `/cases/:caseId/documents` | Multipart `file` or JSON `text`, plus title, type, date, filedOn, hearingId, filedById, orderKind |
 | GET | `/cases/:caseId/documents` | List, filter by `type` and `hearingId` |
 | GET | `/documents/:documentId`, `/documents/:documentId/chunks?page=` | Status and metadata / text chunks with page and para |
 | POST | `/hearings/:hearingId/transcripts` | New transcript version (`{ text, speakerMap? }`) |
@@ -112,7 +112,9 @@ Every response, success or error, has the same shape (see `ApiResponse` in `serv
 | PATCH | `/transcripts/:transcriptId/speakers` | Map a speaker label to a person (turn numbers never change) |
 | GET | `/cases/:caseId/claims?personId=&subjectId=&sourceId=` | Claims with who said it, about what, and the exact source (page/para or hearing turn) |
 | GET | `/cases/:caseId/subjects` | What the case is about (property, payments, documents) with claim counts |
-| GET | `/cases/:caseId/directions?status=pending\|overdue\|complied` | Court directions with assignees, deadlines and source order |
+| GET | `/cases/:caseId/directions?status=pending\|overdue\|complied\|in_force\|vacated` | Court directions with assignees, deadline, source order and the evidence of compliance |
+| GET | `/cases/:caseId/compliance` | Overdue, due before the next hearing, complied (on time / late), in force, vacated, and a record per party |
+| PATCH | `/directions/:directionId` | Lawyer override `{ status: complied\|not_complied\|vacated\|auto, note }` (`auto` hands it back to the agent) |
 | POST | `/documents/:documentId/analyze`, `/transcripts/:transcriptId/analyze` | Re-run the intake agent (replaces earlier results) |
 | GET | `/cases/:caseId/contradictions?category=self\|same_side\|record` | Conflicting statements with both citations and the reason |
 | GET | `/cases/:caseId/disputes` | Points where the two sides disagree |
@@ -137,6 +139,10 @@ Paths shown without a prefix are under `/api/v1` as well.
    - `SUPPORTS` for corroboration.
 
    Verdicts come from `OPENAI_REASONING_MODEL`, which must first answer "can both claims be true?"; the code rejects verdicts that disagree with that answer.
+7. **Compliance agent:** links each `Direction` to the evidence that it was followed. Evidence is only filed documents and later orders, never transcripts.
+   - a new filing is matched against pending directions given to the party who filed it (`(Direction)-[:TO]->(Party)<-[:FILED_BY]-(Document)`), producing `COMPLIED_BY {onTime, daysLate}` from the filing date (`filedOn`, not the document's own date: a 2019 sale deed filed in 2021);
+   - a new order is read for what it records about earlier directions: `COMPLIED_BY` (evidence: order), `NONCOMPLIANCE_RECORDED_IN`, or `VACATED_BY`; its own new directions are back-filled against documents already on file;
+   - state is computed on read: lawyer override, then vacated, complied, in force (status quo, undertakings), overdue, pending. A lawyer's override is never changed by the agent and survives re-analysis of the order.
 
 Transcripts are split into turns on `Speaker: text` lines and numbered 1, 2, 3, since Indian court transcripts rarely have timestamps. Labels like "Court", "Ld. Counsel for Defendant", "PW1" or "Plaintiff" are matched to people in the case. Unmatched labels are reported and can be fixed with `PATCH /transcripts/:id/speakers`.
 
