@@ -3,7 +3,8 @@ import { nowIso, runQuery } from "../../common/db/index.js";
 import { enqueue } from "./queue.js";
 
 const WRITE_BATCH = 32;
-const CONTEXT_CHARS = 300; // of the previous turn, embedded with each transcript turn
+const SHORT_TURN_CHARS = 80; // turns shorter than this ("Denied.", "Obliged.") get context
+const CONTEXT_CHARS = 200; // of the previous turn, embedded with a short turn
 const MAX_EMBED_CHARS = 6000; // stay well inside the embedding model's token limit
 
 type Owner = "Document" | "Transcript";
@@ -63,7 +64,11 @@ export async function embedDocument(documentId: string): Promise<void> {
   );
 }
 
-/** Each turn is embedded with the tail of the previous turn, so short replies ("Denied.") keep their meaning. */
+/**
+ * Each turn is embedded on its own. Short replies ("Denied.", "That is correct") also carry
+ * the tail of the previous turn so they keep their meaning. Longer turns get no context,
+ * otherwise neighbouring turns compete for the same searches.
+ */
 export async function embedTranscript(transcriptId: string): Promise<void> {
   await runEmbedding("Transcript", transcriptId, "Segment", async () => {
     const turns = await runQuery<{ id: string; seq: number; label: string; text: string; done: boolean }>(
@@ -75,7 +80,8 @@ export async function embedTranscript(transcriptId: string): Promise<void> {
     return turns.flatMap((t, i) => {
       if (t.done) return [];
       const prev = turns[i - 1];
-      const context = prev ? `${prev.label}: ${prev.text.slice(-CONTEXT_CHARS)}\n` : "";
+      const context =
+        prev && t.text.length < SHORT_TURN_CHARS ? `${prev.label}: ${prev.text.slice(-CONTEXT_CHARS)}\n` : "";
       return [{ id: t.id, input: `${context}${t.label}: ${t.text}` }];
     });
   });
