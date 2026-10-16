@@ -114,6 +114,10 @@ Every response, success or error, has the same shape (see `ApiResponse` in `serv
 | GET | `/cases/:caseId/subjects` | What the case is about (property, payments, documents) with claim counts |
 | GET | `/cases/:caseId/directions?status=pending\|overdue\|complied` | Court directions with assignees, deadlines and source order |
 | POST | `/documents/:documentId/analyze`, `/transcripts/:transcriptId/analyze` | Re-run the intake agent (replaces earlier results) |
+| GET | `/cases/:caseId/contradictions?category=self\|same_side\|record` | Conflicting statements with both citations and the reason |
+| GET | `/cases/:caseId/disputes` | Points where the two sides disagree |
+| GET | `/claims/:claimId/related` | Everything that contradicts, disputes or supports one claim |
+| POST | `/cases/:caseId/factcheck` | Re-check every claim of the case from scratch |
 
 Paths shown without a prefix are under `/api/v1` as well.
 
@@ -127,6 +131,12 @@ Paths shown without a prefix are under `/api/v1` as well.
    - documents and transcript turns become `Claim` nodes, linked to who made them (`MADE_BY`, `ON_BEHALF_OF`), what they are about (`ABOUT` a `Subject`) and where they came from (`CONTAINS` from the chunk or turn). Quotes are checked against the source text.
    - orders become `Direction` nodes with assignees and computed due dates, and the next date of hearing is scheduled automatically.
    - analysis runs one source at a time, so a later document reuses the subjects an earlier one created. That is what lets a 2021 denial and a 2023 admission land on the same payment.
+6. **Fact-check agent:** each new claim is compared with earlier claims found through the graph (same `Subject`, same person) and by meaning (vector search). The graph also decides whose side each claim is on (`MADE_BY` → `REPRESENTS` / `CALLED_BY` → party role), so the result is written as:
+   - `CONTRADICTS` for the same person over time, the same side, or a document of record (sale deed, FIR, order),
+   - `DISPUTES` for opposite sides disagreeing (the dispute itself, not a contradiction),
+   - `SUPPORTS` for corroboration.
+
+   Verdicts come from `OPENAI_REASONING_MODEL`, which must first answer "can both claims be true?"; the code rejects verdicts that disagree with that answer.
 
 Transcripts are split into turns on `Speaker: text` lines and numbered 1, 2, 3, since Indian court transcripts rarely have timestamps. Labels like "Court", "Ld. Counsel for Defendant", "PW1" or "Plaintiff" are matched to people in the case. Unmatched labels are reported and can be fixed with `PATCH /transcripts/:id/speakers`.
 
