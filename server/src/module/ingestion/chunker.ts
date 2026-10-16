@@ -58,7 +58,8 @@ export function chunkPages(pages: string[]): ChunkDraft[] {
     const merged: string[] = [];
     let carry = "";
     for (const block of blocks) {
-      const numbered = PARA_NUMBER.test(block);
+      // A heading directly above "1. That..." (single line break) still makes the block numbered.
+      const numbered = block.split("\n").some((line) => PARA_NUMBER.test(line));
       const text = carry ? `${carry}\n${block}` : block;
       if (!numbered && text.length < MIN_CHARS) carry = text;
       else {
