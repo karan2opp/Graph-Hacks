@@ -27,10 +27,16 @@ Built for **Graph Hacks: Context for AI Agents** (WeMakeDevs x FalkorDB), Track 
 │       ├── common/          shared building blocks
 │       │   ├── utils/       ApiError, ApiResponse, ApiRequest
 │       │   ├── middleware/  requestId, validate (zod), error handler
-│       │   ├── db/          FalkorDB connection (connect, getGraph, disconnect)
-│       │   └── media/       ImageKit client + /media routes (upload, delete, auth)
+│       │   ├── db/          FalkorDB connection + runQuery / queryOne helpers
+│       │   ├── ai/          OpenAI client: embeddings, image OCR
+│       │   └── media/       ImageKit client, upload middleware, /media routes
 │       ├── module/          feature modules
-│       │   ├── graph/       graph schema, labels, indexes (queries go here)
+│       │   ├── graph/       labels and indexes (range + vector)
+│       │   ├── case/        cases, people (party, lawyer, judge, witness), case links
+│       │   ├── hearing/     hearings, NEXT timeline, judge, appearances, adjournments
+│       │   ├── document/    document upload / paste, chunks
+│       │   ├── transcript/  transcript parser, speaker matching, versions
+│       │   ├── ingestion/   text extraction, chunker, job queue, embedding jobs
 │       │   └── health/      GET /api/v1/health
 │       ├── config/env.ts    validated environment variables
 │       ├── app.ts           Express app
@@ -91,13 +97,37 @@ Every response, success or error, has the same shape (see `ApiResponse` in `serv
 | POST | `/api/v1/media/upload` | Multipart `file` field (image, video, PDF) to ImageKit |
 | GET | `/api/v1/media/auth` | Signed params for direct browser uploads |
 | DELETE | `/api/v1/media/:fileId` | Remove a file from ImageKit |
+| POST / GET | `/cases` | Create / list cases (with hearing and document counts) |
+| GET / PATCH | `/cases/:caseId` | Case overview (linked cases, stats) / update stage, status |
+| POST | `/cases/:caseId/links` | Link two cases (`{ linkedCaseId, reason }`) |
+| POST / GET | `/cases/:caseId/people` | Add / list parties, lawyers, judges, witnesses |
+| POST / GET | `/cases/:caseId/hearings` | Add a hearing / timeline in date order |
+| GET / PATCH | `/hearings/:hearingId` | Hearing with judge, appearances, documents, transcript, previous / next |
+| POST | `/cases/:caseId/documents` | Multipart `file` or JSON `text`, plus title, type, date, hearingId, filedById, orderKind |
+| GET | `/cases/:caseId/documents` | List, filter by `type` and `hearingId` |
+| GET | `/documents/:documentId`, `/documents/:documentId/chunks?page=` | Status and metadata / text chunks with page and para |
+| POST | `/hearings/:hearingId/transcripts` | New transcript version (`{ text, speakerMap? }`) |
+| GET | `/hearings/:hearingId/transcript?from=&to=&version=` | Numbered turns with resolved speakers |
+| GET | `/hearings/:hearingId/transcripts` | All versions |
+| PATCH | `/transcripts/:transcriptId/speakers` | Map a speaker label to a person (turn numbers never change) |
+
+Paths shown without a prefix are under `/api/v1` as well.
+
+### Ingestion pipeline
+
+1. **Store:** the file goes to ImageKit. The same content uploaded twice to a case returns the existing document.
+2. **Read:** PDFs are read page by page, images through OpenAI vision OCR, pasted text as is (a form feed starts a new page). Scanned PDFs and videos are stored without text.
+3. **Chunk:** paragraph-sized chunks keep `page`, `para` and the document's own paragraph number (`paraLabel`).
+4. **Embed:** a background job embeds chunks and transcript turns. Status moves from `extracted` to `embedding` to `ready`. Without `OPENAI_API_KEY` it waits, and resumes on the next boot.
+
+Transcripts are split into turns on `Speaker: text` lines and numbered 1, 2, 3, since Indian court transcripts rarely have timestamps. Labels like "Court", "Ld. Counsel for Defendant", "PW1" or "Plaintiff" are matched to people in the case. Unmatched labels are reported and can be fixed with `PATCH /transcripts/:id/speakers`.
 
 ## FalkorDB
 
 - The connection lives in `server/src/common/db/`; use `getGraph()` anywhere to run queries.
 - Graph name comes from `FALKORDB_GRAPH` (default `court_memory`).
-- On boot the server creates range indexes on `id` for every node label and a **vector index** on `Claim.embedding` (cosine, 1536 dims for `text-embedding-3-small`). It is safe to run repeatedly.
-- Labels and edge types are listed in `server/src/module/graph/graph.schema.ts` and match section 3 of the plan.
+- On boot the server creates range indexes on `id` (and common lookup fields) for every label, and **vector indexes** on `Chunk`, `Segment` and `Claim` `embedding` (cosine, 1536 dims for `text-embedding-3-small`). It is safe to run repeatedly. Vector search returns cosine *distance*: lower is closer.
+- Labels are listed in `server/src/module/graph/graph.schema.ts`; the full model is section 4 of [plan.md](plan.md).
 - Open `http://localhost:3000` for the FalkorDB Browser to inspect the graph while developing.
 
 ## Scripts
