@@ -1,5 +1,6 @@
 import { isAIEnabled } from "../../common/ai/index.js";
 import { nowIso, queryOne, runQuery } from "../../common/db/index.js";
+import { factCheckClaims, RECORD_TYPES } from "../factcheck/factcheck.agent.js";
 import { enqueue } from "../ingestion/index.js";
 import { extractClaims, type SourceBlock } from "./claims.extractor.js";
 import { extractDirections } from "./directions.extractor.js";
@@ -11,6 +12,9 @@ import { extractDirections } from "./directions.extractor.js";
  */
 type Owner = "Document" | "Transcript";
 
+/** A party's own pleadings: everything in them is asserted by the party who filed them. */
+const PLEADINGS = ["plaint", "written_statement", "replication", "application", "reply"];
+
 async function setAnalysis(label: Owner, id: string, analysis: string, extra: Record<string, unknown> = {}) {
   await runQuery(`MATCH (n:${label} {id: $id}) SET n.analysis = $analysis, n.updatedAt = $now, n += $extra`, {
     id,
@@ -18,6 +22,17 @@ async function setAnalysis(label: Owner, id: string, analysis: string, extra: Re
     now: nowIso(),
     extra,
   });
+}
+
+/** Hands new claims to the fact-check agent. Its failure does not undo the extraction. */
+async function factCheck(caseId: string, claimIds: string[]) {
+  try {
+    const r = await factCheckClaims(caseId, claimIds);
+    return { contradictionCount: r.contradicts, disputeCount: r.disputes, supportCount: r.supports, factcheckError: null };
+  } catch (e) {
+    console.error("[fact-check] failed:", (e as Error).message);
+    return { factcheckError: (e as Error).message };
+  }
 }
 
 async function run(label: Owner, id: string, work: () => Promise<Record<string, unknown>>) {
@@ -77,7 +92,7 @@ export async function analyzeDocument(documentId: string): Promise<void> {
       });
       return { directionCount: r.directions };
     }
-    const claimCount = await extractClaims({
+    const claimIds = await extractClaims({
       caseId: doc.caseId,
       sourceType: "document",
       sourceId: documentId,
@@ -85,10 +100,12 @@ export async function analyzeDocument(documentId: string): Promise<void> {
       statedOn: doc.date ?? doc.hearingDate,
       hearingId: doc.hearingId,
       internal: Boolean(doc.private),
-      defaultMadeBy: doc.filedById,
+      // Whoever filed a sale deed or FIR did not author it, so do not fall back to the filer.
+      defaultMadeBy: RECORD_TYPES.includes(doc.type) ? null : doc.filedById,
+      forceMadeBy: PLEADINGS.includes(doc.type),
       blocks,
     });
-    return { claimCount };
+    return { claimCount: claimIds.length, ...(await factCheck(doc.caseId, claimIds)) };
   });
 }
 
@@ -112,7 +129,7 @@ export async function analyzeTranscript(transcriptId: string): Promise<void> {
   );
 
   await run("Transcript", transcriptId, async () => {
-    const claimCount = await extractClaims({
+    const claimIds = await extractClaims({
       caseId: t.caseId,
       sourceType: "transcript",
       sourceId: transcriptId,
@@ -135,7 +152,7 @@ export async function analyzeTranscript(transcriptId: string): Promise<void> {
        SET c.superseded = true`,
       { hearingId: t.hearingId, transcriptId },
     );
-    return { claimCount };
+    return { claimCount: claimIds.length, ...(await factCheck(t.caseId, claimIds)) };
   });
 }
 

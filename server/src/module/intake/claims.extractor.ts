@@ -53,7 +53,8 @@ Rules:
 - Write each claim so it makes sense alone: use names from the people list instead of "he", "my client",
   "the defendant". Keep amounts and dates exactly as stated.
 - quote: copy the exact words from that source block, do not paraphrase.
-- madeBy: the person asserting it. In a transcript turn it is the speaker. In a filed document it is the
+- madeBy: the person ASSERTING it, not the person it is about ("Suresh refused to hand over possession"
+  in the plaintiff's plaint is asserted by the plaintiff). In a transcript turn it is the speaker. In a filed document it is the
   party who filed it, unless the text shows a different deponent or complainant.
 - onBehalfOf: when a lawyer or witness asserts something for a party, that party's ref.
 - kind: allegation (accuses someone), denial (rejects an allegation), admission (concedes something against
@@ -83,6 +84,7 @@ export interface ClaimSource {
   hearingId: string | null;
   internal: boolean; // lawyer's private notes
   defaultMadeBy: string | null; // filing party for documents
+  forceMadeBy?: boolean; // pleadings: every claim is the filing party's own assertion
   blocks: SourceBlock[];
 }
 
@@ -102,9 +104,9 @@ ${blocks.map((b) => `[${b.ref}] ${b.label}\n${b.text}`).join("\n\n")}`;
 /**
  * Extracts claims from a document or transcript and writes them to the graph:
  * (Chunk|Segment)-[:CONTAINS]->(Claim)-[:MADE_BY]->(Person), -[:ABOUT]->(Subject).
- * Re-running replaces the claims previously extracted from the same source.
+ * Re-running replaces the claims previously extracted from the same source. Returns the new claim ids.
  */
-export async function extractClaims(source: ClaimSource): Promise<number> {
+export async function extractClaims(source: ClaimSource): Promise<string[]> {
   const people = await loadPeople(source.caseId);
   const subjects = await loadSubjects(source.caseId);
   const personByRef = new Map(people.map((p) => [p.ref, p.id]));
@@ -122,7 +124,7 @@ export async function extractClaims(source: ClaimSource): Promise<number> {
   }
 
   await runQuery("MATCH (c:Claim {sourceId: $sourceId}) DETACH DELETE c", { sourceId: source.sourceId });
-  if (!found.length) return 0;
+  if (!found.length) return [];
 
   // Subjects: reuse by ref, otherwise MERGE by normalised name inside the case.
   const subjectIdByRef = new Map(subjects.map((s) => [s.ref, s.id]));
@@ -160,7 +162,11 @@ export async function extractClaims(source: ClaimSource): Promise<number> {
     kind: claim.kind,
     eventDate: /^\d{4}-\d{2}-\d{2}$/.test(claim.eventDate ?? "") ? claim.eventDate : null,
     madeBy:
-      block.speakerId ?? (claim.madeBy && personByRef.get(claim.madeBy)) ?? source.defaultMadeBy ?? null,
+      block.speakerId ??
+      (source.forceMadeBy ? source.defaultMadeBy : null) ??
+      (claim.madeBy && personByRef.get(claim.madeBy)) ??
+      source.defaultMadeBy ??
+      null,
     onBehalfOf: (claim.onBehalfOf && claim.onBehalfOf !== claim.madeBy && personByRef.get(claim.onBehalfOf)) || null,
     subjectIds: subjectIds(claim),
   }));
@@ -203,5 +209,5 @@ export async function extractClaims(source: ClaimSource): Promise<number> {
       rows: withVec.slice(i, i + 32),
     });
   }
-  return rows.length;
+  return rows.map((r) => r.id);
 }

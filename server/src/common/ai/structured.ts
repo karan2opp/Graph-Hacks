@@ -3,8 +3,18 @@ import type { z } from "zod";
 import { env } from "../../config/env.js";
 import { getOpenAI } from "./openai.js";
 
+export interface StructuredOptions {
+  /** Defaults to OPENAI_CHAT_MODEL. */
+  model?: string;
+  /** For reasoning models (gpt-5*, o*): how hard to think. */
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
+}
+
+/** Reasoning models reject `temperature` and take `reasoning_effort` instead. */
+const isReasoningModel = (model: string) => /^(gpt-5|o\d)/.test(model);
+
 /**
- * Asks the chat model for output that matches a zod schema (OpenAI structured outputs, strict).
+ * Asks a model for output that matches a zod schema (OpenAI structured outputs, strict).
  * Optional fields in the schema must be `.nullable()`, not `.optional()`.
  */
 export async function generateStructured<S extends z.ZodType>(
@@ -12,10 +22,12 @@ export async function generateStructured<S extends z.ZodType>(
   name: string,
   system: string,
   user: string,
+  options: StructuredOptions = {},
 ): Promise<z.infer<S>> {
+  const model = options.model ?? env.OPENAI_CHAT_MODEL;
   const res = await getOpenAI().chat.completions.parse({
-    model: env.OPENAI_CHAT_MODEL,
-    temperature: 0,
+    model,
+    ...(isReasoningModel(model) ? { reasoning_effort: options.reasoningEffort ?? "low" } : { temperature: 0 }),
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },

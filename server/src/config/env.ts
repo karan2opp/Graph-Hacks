@@ -25,7 +25,8 @@ const schema = z.object({
   IMAGEKIT_FOLDER: str("/court-memory"),
 
   OPENAI_API_KEY: optStr,
-  OPENAI_CHAT_MODEL: str("gpt-4o-mini"),
+  OPENAI_CHAT_MODEL: str("gpt-4o-mini"), // extraction, OCR
+  OPENAI_REASONING_MODEL: str("gpt-5.4-mini"), // judgments: fact-check
   OPENAI_EMBEDDING_MODEL: str("text-embedding-3-small"),
   EMBEDDING_DIMENSIONS: num(1536),
 });

@@ -6,6 +6,7 @@ export interface ClaimFilter {
   subjectId?: string;
   sourceId?: string; // document or transcript
   includeSuperseded?: boolean;
+  ids?: string[]; // exact claims (used by the fact-check views)
 }
 
 /**
@@ -17,6 +18,7 @@ export async function listClaims(caseId: string, f: ClaimFilter = {}) {
   return runQuery(
     `MATCH (c:Claim {caseId: $caseId})
      WHERE ($includeSuperseded OR c.superseded = false)
+       AND ($ids IS NULL OR c.id IN $ids)
        AND ($sourceId IS NULL OR c.sourceId = $sourceId)
        AND ($personId IS NULL OR (c)-[:MADE_BY|ON_BEHALF_OF]->(:Person {id: $personId}))
        AND ($subjectId IS NULL OR (c)-[:ABOUT]->(:Subject {id: $subjectId}))
@@ -42,6 +44,7 @@ export async function listClaims(caseId: string, f: ClaimFilter = {}) {
       subjectId: f.subjectId ?? null,
       sourceId: f.sourceId ?? null,
       includeSuperseded: f.includeSuperseded ?? false,
+      ids: f.ids ?? null,
     },
   );
 }
