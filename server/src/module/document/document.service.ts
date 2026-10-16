@@ -14,6 +14,7 @@ export interface DocumentNode {
   title: string;
   type: DocumentType;
   date: string | null;
+  filedOn: string | null;
   orderKind: string | null;
   private: boolean;
   source: "file" | "text";
@@ -109,7 +110,7 @@ export async function createDocument(
   const now = nowIso();
   await runQuery(
     `MATCH (c:Case {id: $caseId})
-     CREATE (d:Document {id: $id, caseId: $caseId, title: $title, type: $type, date: $date, orderKind: $orderKind,
+     CREATE (d:Document {id: $id, caseId: $caseId, title: $title, type: $type, date: $date, filedOn: $filedOn, orderKind: $orderKind,
        private: $private, source: $source, fileName: $fileName, mimeType: $mimeType, size: $size, hash: $hash,
        fileUrl: $fileUrl, fileId: $fileId, pageCount: $pageCount, chunkCount: $chunkCount, status: $status,
        analysis: $analysis, note: $note, error: null, createdAt: $now, updatedAt: $now})-[:BELONGS_TO]->(c)`,
@@ -119,6 +120,7 @@ export async function createDocument(
       title: input.title,
       type: input.type,
       date: input.date ?? hearingDate,
+      filedOn: input.filedOn ?? hearingDate,
       orderKind: input.type === "order" ? (input.orderKind ?? null) : null,
       private: input.private ?? input.type === "note",
       source: file ? "file" : "text",
@@ -179,7 +181,7 @@ export async function listDocuments(caseId: string, filter: { type?: string; hea
      OPTIONAL MATCH (d)-[:FILED_BY]->(p:Party)
      WITH d, h, p
      WHERE $hearingId IS NULL OR h.id = $hearingId
-     RETURN d {.id, .title, .type, .date, .orderKind, .private, .status, .pageCount, .chunkCount, .fileUrl, .createdAt} AS document,
+     RETURN d {.id, .title, .type, .date, .filedOn, .orderKind, .private, .status, .pageCount, .chunkCount, .fileUrl, .createdAt} AS document,
             CASE WHEN h IS NULL THEN NULL ELSE {id: h.id, date: h.date} END AS hearing,
             CASE WHEN p IS NULL THEN NULL ELSE {id: p.id, name: p.name} END AS filedBy
      ORDER BY d.date, d.createdAt`,

@@ -37,7 +37,8 @@ export const createDocumentBody = z
   .object({
     title: z.string().trim().min(1),
     type: z.enum(DOCUMENT_TYPES),
-    date: opt(isoDate),
+    date: opt(isoDate), // date of the document itself (a 2019 sale deed)
+    filedOn: opt(isoDate), // date it was filed in court (2021); defaults to the hearing date
     hearingId: opt(idParam), // submitted at this hearing
     filedById: opt(idParam), // party who filed it
     orderKind: opt(z.enum(ORDER_KINDS)),
