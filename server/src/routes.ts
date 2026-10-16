@@ -7,6 +7,7 @@ import { factCheckRouter } from "./module/factcheck/index.js";
 import { healthRouter } from "./module/health/health.routes.js";
 import { hearingRouter } from "./module/hearing/index.js";
 import { intakeRouter } from "./module/intake/index.js";
+import { qaRouter } from "./module/qa/index.js";
 import { transcriptRouter } from "./module/transcript/index.js";
 
 /** All routers are mounted here under /api/v1. Feature routers declare their full paths. */
@@ -21,3 +22,4 @@ apiRouter.use(transcriptRouter);
 apiRouter.use(intakeRouter);
 apiRouter.use(factCheckRouter);
 apiRouter.use(complianceRouter);
+apiRouter.use(qaRouter);

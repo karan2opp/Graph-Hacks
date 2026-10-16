@@ -15,6 +15,8 @@ export const NODE_LABELS = [
   "Direction",
   "Claim",
   "Subject",
+  "Conversation", // Q&A memory
+  "Message",
   "Person",
   ...PERSON_KINDS,
 ] as const;
@@ -39,6 +41,7 @@ const PROPERTY_INDEXES: [NodeLabel, string][] = [
   ["Person", "nameKey"],
   ["Direction", "status"],
   ["Direction", "dueDate"],
+  ["Conversation", "caseId"],
 ];
 
 const isAlreadyIndexed = (e: unknown) => /already indexed/i.test(String((e as Error)?.message));
