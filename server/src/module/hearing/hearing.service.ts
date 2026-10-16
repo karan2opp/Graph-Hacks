@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { nowIso, queryOne, runQuery } from "../../common/db/index.js";
-import { ApiError } from "../../common/utils/index.js";
+import { ApiError, todayIST } from "../../common/utils/index.js";
 import { requireCase } from "../case/index.js";
 import type { CreateHearingInput, UpdateHearingInput } from "./hearing.schema.js";
 
@@ -18,7 +18,7 @@ export interface HearingNode {
   updatedAt: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayIST;
 
 export async function requireHearing(hearingId: string): Promise<HearingNode> {
   const row = await queryOne<{ h: HearingNode }>("MATCH (h:Hearing {id: $hearingId}) RETURN h {.*} AS h", { hearingId });

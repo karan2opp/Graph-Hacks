@@ -1,5 +1,5 @@
 import { nowIso, queryOne, runQuery } from "../../common/db/index.js";
-import { ApiError } from "../../common/utils/index.js";
+import { ApiError, todayIST } from "../../common/utils/index.js";
 import { requireCase } from "../case/index.js";
 import { STANDING_KINDS } from "./compliance.agent.js";
 
@@ -7,7 +7,7 @@ export const DIRECTION_STATES = ["pending", "overdue", "complied", "in_force", "
 export type DirectionState = (typeof DIRECTION_STATES)[number];
 export const MANUAL_STATUSES = ["complied", "not_complied", "vacated", "auto"] as const;
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = todayIST;
 
 /**
  * Every direction of a case with its state, worked out from the graph each time:

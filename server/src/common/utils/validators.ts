@@ -16,3 +16,6 @@ export function nameKey(name: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+/** Today's date in India (YYYY-MM-DD). Courts, deadlines and "overdue" follow IST, not UTC. */
+export const todayIST = () => new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
