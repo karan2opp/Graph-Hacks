@@ -53,17 +53,20 @@ export function chunkPages(pages: string[]): ChunkDraft[] {
       .filter(Boolean)
       .flatMap(splitLong);
 
-    // Merge short blocks (headings, signatures) into the block that follows.
+    // Merge short unnumbered blocks (headings, signatures) into the block that follows.
+    // A numbered paragraph always stays its own chunk, so "para 1" and "para 3" cite separately.
     const merged: string[] = [];
     let carry = "";
     for (const block of blocks) {
+      const numbered = PARA_NUMBER.test(block);
       const text = carry ? `${carry}\n${block}` : block;
-      if (text.length < MIN_CHARS) carry = text;
+      if (!numbered && text.length < MIN_CHARS) carry = text;
       else {
         merged.push(text);
         carry = "";
       }
     }
+    // A short trailing block (signature, date) belongs with the last chunk.
     if (carry) {
       if (merged.length) merged[merged.length - 1] += `\n${carry}`;
       else merged.push(carry);
