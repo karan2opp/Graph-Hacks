@@ -4,6 +4,7 @@ import { caseRouter } from "./module/case/index.js";
 import { documentRouter } from "./module/document/index.js";
 import { healthRouter } from "./module/health/health.routes.js";
 import { hearingRouter } from "./module/hearing/index.js";
+import { intakeRouter } from "./module/intake/index.js";
 import { transcriptRouter } from "./module/transcript/index.js";
 
 /** All routers are mounted here under /api/v1. Feature routers declare their full paths. */
@@ -15,3 +16,4 @@ apiRouter.use(caseRouter);
 apiRouter.use(hearingRouter);
 apiRouter.use(documentRouter);
 apiRouter.use(transcriptRouter);
+apiRouter.use(intakeRouter);

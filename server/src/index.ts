@@ -3,12 +3,14 @@ import { env } from "./config/env.js";
 import { connectFalkorDB, disconnectFalkorDB } from "./common/db/index.js";
 import { initGraphSchema } from "./module/graph/index.js";
 import { resumePendingJobs } from "./module/ingestion/index.js";
+import { resumeIntakeJobs } from "./module/intake/index.js";
 
 async function main() {
   try {
     await connectFalkorDB();
     await initGraphSchema();
     await resumePendingJobs();
+    await resumeIntakeJobs();
   } catch (e) {
     // Keep the API up so /health reports the problem instead of crash-looping.
     console.error("FalkorDB unavailable. Is `docker compose up -d` running?", (e as Error).message);

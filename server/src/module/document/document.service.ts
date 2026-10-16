@@ -5,6 +5,7 @@ import { ApiError } from "../../common/utils/index.js";
 import { requireCase } from "../case/index.js";
 import { requireHearing } from "../hearing/index.js";
 import { chunkPages, extractPages, queueDocumentEmbedding, splitTextPages } from "../ingestion/index.js";
+import { queueDocumentAnalysis } from "../intake/index.js";
 import type { CreateDocumentInput, DocumentType } from "./document.schema.js";
 
 export interface DocumentNode {
@@ -111,7 +112,7 @@ export async function createDocument(
      CREATE (d:Document {id: $id, caseId: $caseId, title: $title, type: $type, date: $date, orderKind: $orderKind,
        private: $private, source: $source, fileName: $fileName, mimeType: $mimeType, size: $size, hash: $hash,
        fileUrl: $fileUrl, fileId: $fileId, pageCount: $pageCount, chunkCount: $chunkCount, status: $status,
-       note: $note, error: null, createdAt: $now, updatedAt: $now})-[:BELONGS_TO]->(c)`,
+       analysis: $analysis, note: $note, error: null, createdAt: $now, updatedAt: $now})-[:BELONGS_TO]->(c)`,
     {
       caseId,
       id,
@@ -130,6 +131,7 @@ export async function createDocument(
       pageCount: extracted.pages.length,
       chunkCount: chunks.length,
       status: chunks.length ? "extracted" : "stored",
+      analysis: chunks.length ? "pending" : "skipped",
       note: extracted.note ?? null,
       now,
     },
@@ -159,8 +161,11 @@ export async function createDocument(
     );
   }
 
-  // EMBED (background)
-  if (chunks.length) queueDocumentEmbedding(id);
+  // EMBED and ANALYSE (background)
+  if (chunks.length) {
+    queueDocumentEmbedding(id);
+    queueDocumentAnalysis(id);
+  }
 
   return { document: await requireDocument(id), created: true, warnings };
 }

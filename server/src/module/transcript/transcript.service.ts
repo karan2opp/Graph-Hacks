@@ -3,6 +3,7 @@ import { nowIso, queryOne, runQuery } from "../../common/db/index.js";
 import { ApiError } from "../../common/utils/index.js";
 import { requireHearing } from "../hearing/index.js";
 import { queueTranscriptEmbedding } from "../ingestion/index.js";
+import { queueTranscriptAnalysis } from "../intake/index.js";
 import type { CreateTranscriptInput, SegmentsQuery } from "./transcript.schema.js";
 import { parseTranscript } from "./transcript.parser.js";
 import { knownLabelChecker, resolveSpeakers } from "./speaker.resolver.js";
@@ -108,7 +109,7 @@ export async function createTranscript(hearingId: string, input: CreateTranscrip
   await runQuery(
     `MATCH (h:Hearing {id: $hearingId})
      CREATE (h)-[:RECORDED_IN]->(:Transcript {id: $id, hearingId: $hearingId, caseId: $caseId, version: $version,
-       current: true, hash: $hash, header: $header, segmentCount: $count, speakers: '[]', status: 'extracted',
+       current: true, hash: $hash, header: $header, segmentCount: $count, speakers: '[]', status: 'extracted', analysis: 'pending',
        note: null, error: null, createdAt: $now, updatedAt: $now})`,
     { hearingId, id, caseId: hearing.caseId, version, hash, header: parsed.header, count: parsed.turns.length, now },
   );
@@ -131,6 +132,7 @@ export async function createTranscript(hearingId: string, input: CreateTranscrip
   const mapping = await resolveSpeakers(hearing.caseId, hearingId, parsed.labels, overrides);
   await linkSpeakers(id, mapping);
   queueTranscriptEmbedding(id);
+  queueTranscriptAnalysis(id);
 
   return { transcript: await getTranscript(hearingId), created: true };
 }

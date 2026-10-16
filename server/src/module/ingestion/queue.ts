@@ -1,39 +1,48 @@
 /**
- * Minimal in-process job queue for background pipeline steps (embedding, extraction).
- * Jobs with the same key are not queued twice. State lives on the graph nodes
- * (`status`), so unfinished work is re-queued on boot (see recovery.ts).
+ * Minimal in-process job queue for background pipeline steps. Jobs run in lanes:
+ * - "embed": 2 at a time (independent API calls)
+ * - "analyze": 1 at a time, so each document sees the subjects and people the previous
+ *   analysis created, and the same payment or property is not recorded twice.
+ * Jobs with the same key are not queued twice. Progress lives on the graph nodes, so
+ * unfinished work is re-queued on boot.
  */
-const CONCURRENCY = 2;
+export type Lane = "embed" | "analyze";
+
+const CONCURRENCY: Record<Lane, number> = { embed: 2, analyze: 1 };
 
 interface Job {
   key: string;
   run: () => Promise<void>;
 }
 
-const pending: Job[] = [];
+const lanes: Record<Lane, { pending: Job[]; active: number }> = {
+  embed: { pending: [], active: 0 },
+  analyze: { pending: [], active: 0 },
+};
 const keys = new Set<string>();
-let active = 0;
 
-export function enqueue(key: string, run: () => Promise<void>): void {
+export function enqueue(key: string, run: () => Promise<void>, lane: Lane = "embed"): void {
   if (keys.has(key)) return;
   keys.add(key);
-  pending.push({ key, run });
-  pump();
+  lanes[lane].pending.push({ key, run });
+  pump(lane);
 }
 
-function pump() {
-  while (active < CONCURRENCY && pending.length) {
-    const job = pending.shift()!;
-    active++;
+function pump(lane: Lane) {
+  const l = lanes[lane];
+  while (l.active < CONCURRENCY[lane] && l.pending.length) {
+    const job = l.pending.shift()!;
+    l.active++;
     job
       .run()
       .catch((e: unknown) => console.error(`[job] ${job.key} failed:`, (e as Error).message))
       .finally(() => {
-        active--;
+        l.active--;
         keys.delete(job.key);
-        pump();
+        pump(lane);
       });
   }
 }
 
-export const queueStats = () => ({ active, pending: pending.length });
+export const queueStats = () =>
+  Object.fromEntries(Object.entries(lanes).map(([k, l]) => [k, { active: l.active, pending: l.pending.length }]));
