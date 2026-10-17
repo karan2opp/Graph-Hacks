@@ -8,7 +8,8 @@ export const isAIEnabled = () => Boolean(env.OPENAI_API_KEY);
 
 export function getOpenAI(): OpenAI {
   if (!env.OPENAI_API_KEY) throw ApiError.serviceUnavailable("OpenAI is not configured (set OPENAI_API_KEY)");
-  client ??= new OpenAI({ apiKey: env.OPENAI_API_KEY });
+  // Analysis runs one job at a time for every firm, so a hung call must not hold the lane for long.
+  client ??= new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: 60_000, maxRetries: 1 });
   return client;
 }
 
