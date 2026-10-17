@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { Logo } from '../components/TopBar'
-import { Banner, ErrorState, Field, PageLoader } from '../components/ui'
+import { Banner, ErrorState, Field, Skeleton } from '../components/ui'
 import { errorMessage } from '../lib/format'
 import { api, ApiError } from '../lib/api'
 import { keys } from '../lib/queries'
@@ -150,11 +150,28 @@ export function InvitePage() {
     onSuccess: done,
   })
   const errs = fieldsOf(join.error)
-  if (invite.isPending) return <PageLoader label="Checking your invite" />
+  if (invite.isPending)
+    return (
+      <AuthLayout title="Join a firm">
+        <div className="stack" style={{ gap: 14 }} aria-busy="true">
+          <span className="sr-only" role="status">
+            Checking your invite…
+          </span>
+          <Skeleton height={16} width="70%" />
+          <Skeleton height={44} />
+          <Skeleton height={44} />
+          <Skeleton height={52} width="50%" />
+        </div>
+      </AuthLayout>
+    )
   if (invite.isError)
     return (
       <AuthLayout title="Join a firm">
-        <ErrorState error={invite.error} title="This invite can't be used" />
+        <ErrorState
+          error={invite.error}
+          title="This invite can't be used"
+          retry={invite.error instanceof ApiError && invite.error.statusCode > 0 ? undefined : () => invite.refetch()}
+        />
         <Link to="/login">Go to sign in</Link>
       </AuthLayout>
     )

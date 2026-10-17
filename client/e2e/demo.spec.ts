@@ -63,6 +63,8 @@ test('documents show problem states and open at the cited paragraph', async ({ p
   await expect(page.getByText(/need your attention/)).toBeVisible()
   await expect(page.getByText('No readable text').first()).toBeVisible()
   await expect(page.getByText('Waiting for analysis').first()).toBeVisible()
+  // The list is paged, newest first; find the 2021 written statement by searching, as a lawyer would.
+  await page.getByPlaceholder('Search titles').fill('Written statement')
   await page.getByRole('link', { name: /^Written statement Written statement/ }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Written statement' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Paragraph 1' })).toBeVisible()

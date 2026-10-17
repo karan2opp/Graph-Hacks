@@ -47,6 +47,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       },
     })
   } catch {
+    if (!navigator.onLine) throw new ApiError(0, "You're offline. Reconnect and try again.", 'OFFLINE')
     throw new ApiError(0, 'Could not reach the server. Check your connection and try again.', 'NETWORK_ERROR')
   }
 

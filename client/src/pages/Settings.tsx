@@ -37,8 +37,7 @@ function Members() {
     },
   })
 
-  if (firm.isPending) return <SkeletonList rows={3} />
-  if (firm.isError) return <ErrorState error={firm.error} retry={() => firm.refetch()} />
+  if (firm.data === undefined) return firm.isError ? <ErrorState error={firm.error} retry={() => firm.refetch()} /> : <SkeletonList rows={3} />
   const owner = me.role === 'owner'
   const inviteErr = invite.error instanceof ApiError ? invite.error.fieldErrors().email ?? invite.error.message : invite.error ? errorMessage(invite.error) : undefined
 

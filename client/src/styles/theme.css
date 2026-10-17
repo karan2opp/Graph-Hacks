@@ -186,6 +186,18 @@ a.ref:hover { border-color: var(--blue); color: var(--blue); }
 .empty h2, .empty h3 { font-size: 20px; }
 .skeleton { background: linear-gradient(90deg, var(--rule-2), var(--paper-2), var(--rule-2)); background-size: 200% 100%; animation: shimmer 1.4s infinite linear; border-radius: var(--radius); }
 @keyframes shimmer { to { background-position: -200% 0; } }
+.skeleton-row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--paper); border: 1px solid var(--rule); border-radius: var(--radius); }
+
+/* ---------- pagination ---------- */
+.pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding-top: 4px; }
+.pager-count { font-size: 13px; color: var(--muted); }
+.pager-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pager-buttons .btn { min-width: 36px; }
+.pager-gap { padding: 0 4px; color: var(--muted); }
+
+/* ---------- offline ---------- */
+.offline-bar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 24px); padding: 10px 16px; border-radius: var(--radius); background: var(--ink); color: #fff; font-size: 14px; line-height: 1.4; box-shadow: 0 12px 30px -12px rgba(0,0,0,.5); }
+.offline-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: #e2665d; box-shadow: 0 0 0 3px rgba(226,102,93,.3); }
 .spinner { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--blue); border-right-color: var(--blue-bg); animation: spin .9s linear infinite; display: inline-block; flex: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .skeleton, .spinner { animation: none; } }

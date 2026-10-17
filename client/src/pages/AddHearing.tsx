@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
-import { Banner, Field, SkeletonList } from '../components/ui'
+import { Banner, Field, Skeleton } from '../components/ui'
 import { courtDate, errorMessage, todayIST } from '../lib/format'
 import { api, ApiError } from '../lib/api'
 import { keys, sideOf, useHearings, usePeople } from '../lib/queries'
@@ -78,7 +78,18 @@ export function AddHearingPage() {
     save.mutate(then)
   }
 
-  if (people.isPending) return <SkeletonList rows={4} />
+  if (people.isPending)
+    return (
+      <div className="stack" style={{ gap: 18, maxWidth: 720 }} aria-busy="true">
+        <span className="sr-only" role="status">
+          Loading the form…
+        </span>
+        <Skeleton height={34} width="50%" />
+        <Skeleton height={14} width="70%" />
+        <Skeleton height={190} />
+        <Skeleton height={150} />
+      </div>
+    )
 
   return (
     <div className="split">
@@ -88,6 +99,11 @@ export function AddHearingPage() {
           <h1 className="page-title">{firstHearing ? 'Add the first hearing' : 'Add a hearing'}</h1>
           <p className="lede">Record the date the matter was listed. Orders and transcripts from this date can be added right after.</p>
         </div>
+        {people.isError && (
+          <Banner tone="warn" action={<button type="button" className="btn btn-sm" onClick={() => people.refetch()}>Try again</button>}>
+            The people in this case couldn't be loaded, so the judge and who appeared can't be picked yet.
+          </Banner>
+        )}
         {save.error && !(save.error instanceof ApiError && save.error.statusCode === 422) && <Banner tone="error">{errorMessage(save.error)}</Banner>}
 
         <fieldset>

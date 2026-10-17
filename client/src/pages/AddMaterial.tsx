@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type FormEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { Banner, Field, Spinner } from '../components/ui'
+import { Banner, Field, QueryView, Skeleton } from '../components/ui'
 import { courtDate, errorMessage, plural } from '../lib/format'
 import { api, ApiError } from '../lib/api'
 import { keys, useDocuments, useHearings, usePeople } from '../lib/queries'
@@ -51,8 +51,24 @@ function Pipeline({ caseId, documentId }: { caseId: string; documentId: string }
     queryFn: () => api.get<DocumentDetail>(`/documents/${documentId}`),
     refetchInterval: (q) => (q.state.data && docState(q.state.data).text === 'Being read' ? 2000 : false),
   })
-  if (!doc.data) return <Spinner label="Loading" />
-  const d = doc.data
+  return (
+    <QueryView
+      query={doc}
+      loading={
+        <div className="card stack" style={{ gap: 12 }} aria-busy="true">
+          <Skeleton height={20} width="70%" />
+          {[80, 64, 72, 58, 66].map((w, i) => (
+            <Skeleton key={i} height={14} width={`${w}%`} />
+          ))}
+        </div>
+      }
+    >
+      {(d) => <PipelineSteps caseId={caseId} d={d} />}
+    </QueryView>
+  )
+}
+
+function PipelineSteps({ caseId, d }: { caseId: string; d: DocumentDetail }) {
   return (
     <section className="card stack" aria-live="polite" aria-labelledby="live" style={{ gap: 14 }}>
       <div className="row-between" style={{ alignItems: 'center' }}>
@@ -195,6 +211,11 @@ export function AddMaterialPage() {
           ))}
         </div>
 
+        {(people.isError || hearings.isError) && (
+          <Banner tone="warn" action={<button type="button" className="btn btn-sm" onClick={() => (people.refetch(), hearings.refetch())}>Try again</button>}>
+            This case's hearings and parties couldn't be loaded, so those lists are empty.
+          </Banner>
+        )}
         {notice && <Banner tone="info">{notice}</Banner>}
         {submit.error && !(submit.error instanceof ApiError && submit.error.statusCode === 422 && Object.keys(errs).length) && <Banner tone="error">{errorMessage(submit.error)}</Banner>}
 
@@ -309,7 +330,7 @@ export function AddMaterialPage() {
                 {(p) => <input {...p} className="input" type="date" value={filedOn} onChange={(e) => setFiledOn(e.target.value)} />}
               </Field>
             </div>
-            {type === 'order' && heard.length === 0 && (
+            {type === 'order' && hearings.data && heard.length === 0 && (
               <p className="field-error" style={{ marginTop: 10 }}>
                 An order belongs to a hearing. <Link to={`/app/cases/${caseId}/hearings/new`}>Add the hearing first</Link>.
               </p>
@@ -340,6 +361,16 @@ export function AddMaterialPage() {
         )}
         <div className="card stack" style={{ gap: 10 }}>
           <h3 style={{ fontSize: 16 }}>Recently added</h3>
+          {docs.isPending && [70, 55, 62].map((w, i) => <Skeleton key={i} height={14} width={`${w}%`} />)}
+          {docs.isError && !docs.data && (
+            <p className="muted" style={{ fontSize: 14 }}>
+              Couldn't load the documents.{' '}
+              <button type="button" className="link-btn" onClick={() => docs.refetch()}>
+                Try again
+              </button>
+            </p>
+          )}
+          {docs.data?.length === 0 && <p className="muted" style={{ fontSize: 14 }}>Nothing on file yet.</p>}
           {(docs.data ?? [])
             .slice()
             .sort((a, b) => b.document.createdAt.localeCompare(a.document.createdAt))

@@ -1,6 +1,7 @@
-import { Link, NavLink, Outlet, useParams } from 'react-router'
+import { Link, NavLink, Outlet, useLocation, useParams } from 'react-router'
 import { shortTitle, useCaseCards } from '../lib/queries'
 import { Crumb, TopBar } from './TopBar'
+import { ErrorBoundary } from './ErrorBoundary'
 import { ErrorState, PageLoader } from './ui'
 
 /** Shell for every page inside a case: bench header, the case's side menu, and the page. */
@@ -9,13 +10,26 @@ export function CaseLayout() {
   const cards = useCaseCards()
   const card = cards.data?.find((c) => c.case.id === caseId)
 
-  if (cards.isPending) return <PageLoader label="Opening the case" />
-  if (cards.isError || !card)
+  const { pathname } = useLocation()
+
+  // Keep the bench header while the case loads, and show a case already loaded even if a refresh failed.
+  if (cards.data === undefined && !cards.isError)
+    return (
+      <>
+        <TopBar />
+        <PageLoader label="Opening the case" />
+      </>
+    )
+  if (!card)
     return (
       <>
         <TopBar />
         <main className="page">
-          <ErrorState error={cards.error ?? new Error('This case was not found. It may belong to another firm.')} retry={() => cards.refetch()} title="Case not found" />
+          <ErrorState
+            error={cards.error ?? new Error('This case was not found. It may belong to another firm.')}
+            retry={cards.isError ? () => cards.refetch() : undefined}
+            title="Case not found"
+          />
           <Link to="/app">Back to all cases</Link>
         </main>
       </>
@@ -71,7 +85,9 @@ export function CaseLayout() {
           )}
         </nav>
         <main className="main" id="main">
-          <Outlet />
+          <ErrorBoundary resetKey={pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </>

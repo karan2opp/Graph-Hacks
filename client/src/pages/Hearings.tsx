@@ -2,9 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { FindingCard } from '../components/Findings'
-import { Banner, EmptyState, ErrorState, SkeletonList, Stamp, useToast } from '../components/ui'
+import { Banner, EmptyState, ErrorState, Pagination, QueryView, Skeleton, SkeletonList, Stamp, StaleNotice, useToast } from '../components/ui'
 import { courtDate, errorMessage, inDays, longDate, plural, todayIST } from '../lib/format'
 import { api } from '../lib/api'
+import { usePaged } from '../lib/paging'
 import { keys, sideOf, useBrief, useHearings, usePeople } from '../lib/queries'
 import type { ClaimView, Finding, HearingDetail, TranscriptView } from '../types/domain'
 
@@ -24,6 +25,7 @@ export function HearingsPage() {
   const shown = past.filter((h) =>
     filter === 'orders' ? h.orders > 0 : filter === 'transcripts' ? h.hasTranscript : filter === 'adjourned' ? h.hearing.adjourned : true,
   )
+  const paged = usePaged(shown, 8)
 
   return (
     <>
@@ -36,11 +38,9 @@ export function HearingsPage() {
           + Add hearing
         </Link>
       </div>
-      {hearings.isPending ? (
-        <SkeletonList rows={5} />
-      ) : hearings.isError ? (
-        <ErrorState error={hearings.error} retry={() => hearings.refetch()} />
-      ) : all.length === 0 ? (
+      <QueryView query={hearings} loading={<SkeletonList rows={5} />}>
+        {() =>
+      all.length === 0 ? (
         <EmptyState title="No hearings yet" action={<Link className="btn btn-primary" to="new">Add the first hearing</Link>}>
           Add each date the matter was listed. Orders and transcripts attach to a hearing.
         </EmptyState>
@@ -55,13 +55,14 @@ export function HearingsPage() {
                 ['adjourned', 'Adjourned'],
               ] as const
             ).map(([id, label]) => (
-              <button key={id} type="button" className="pill" aria-pressed={filter === id} onClick={() => setFilter(id)}>
+              <button key={id} type="button" className="pill" aria-pressed={filter === id} onClick={() => (setFilter(id), paged.reset())}>
                 {label}
               </button>
             ))}
           </div>
-          <ol className="diary">
+          <ol className="diary" ref={paged.listRef as React.Ref<HTMLOListElement>}>
             {filter === 'all' &&
+              paged.page === 1 &&
               upcoming.map((h) => (
                 <li key={h.hearing.id}>
                   <Link to={h.hearing.id} className="diary-row">
@@ -84,7 +85,7 @@ export function HearingsPage() {
                   </Link>
                 </li>
               ))}
-            {shown.map((h) => (
+            {paged.items.map((h) => (
               <li key={h.hearing.id}>
                 <Link to={h.hearing.id} className="diary-row">
                   <span className="diary-when">
@@ -118,8 +119,11 @@ export function HearingsPage() {
             ))}
           </ol>
           {shown.length === 0 && <p className="muted">No past hearings match this filter.</p>}
+          <Pagination paged={paged} noun={['past hearing', 'past hearings']} />
         </>
-      )}
+      )
+        }
+      </QueryView>
     </>
   )
 }
@@ -198,17 +202,17 @@ function RelatedPanel({ caseId, claims }: { caseId: string; claims: ClaimView[] 
           </div>
         </div>
       ))}
-      {related.isPending ? (
-        <SkeletonList rows={2} />
-      ) : related.isError ? (
-        <ErrorState error={related.error} retry={() => related.refetch()} />
-      ) : related.data.length === 0 ? (
-        <p className="muted" style={{ fontSize: 14 }}>
-          Nothing else in the case contradicts or supports this yet.
-        </p>
-      ) : (
-        related.data.map((f) => <FindingCard key={f.id} f={f} caseId={caseId} compact focusClaimId={first.claim.id} />)
-      )}
+      <QueryView query={related} loading={<SkeletonList rows={2} />}>
+        {(found) =>
+          found.length === 0 ? (
+            <p className="muted" style={{ fontSize: 14 }}>
+              Nothing else in the case contradicts or supports this yet.
+            </p>
+          ) : (
+            found.map((f) => <FindingCard key={f.id} f={f} caseId={caseId} compact focusClaimId={first.claim.id} />)
+          )
+        }
+      </QueryView>
     </div>
   )
 }
@@ -250,9 +254,23 @@ export function HearingPage() {
     setParams(next, { replace: true })
   }
 
-  if (hearing.isPending) return <SkeletonList rows={6} />
-  if (hearing.isError) return <ErrorState error={hearing.error} retry={() => hearing.refetch()} />
+  if (hearing.data === undefined) {
+    if (hearing.isError) return <ErrorState error={hearing.error} retry={() => hearing.refetch()} />
+    return (
+      <div className="stack" style={{ gap: 20 }} aria-busy="true">
+        <span className="sr-only" role="status">
+          Loading the hearing…
+        </span>
+        <div className="stack" style={{ gap: 8 }}>
+          <Skeleton height={13} width="28%" />
+          <Skeleton height={30} width="44%" />
+        </div>
+        <SkeletonList rows={6} />
+      </div>
+    )
+  }
   const h = hearing.data
+  const highlightsFailed = claims.isError || contradictions.isError
   const list = people.data ?? []
   const sideColor = (personId?: string) => {
     const p = list.find((x) => x.id === personId)
@@ -263,6 +281,7 @@ export function HearingPage() {
 
   return (
     <>
+      {hearing.isError && <StaleNotice error={hearing.error} retry={() => hearing.refetch()} />}
       <div className="row-between" style={{ alignItems: 'center' }}>
         <div className="row" style={{ flexWrap: 'nowrap', gap: 10 }}>
           {h.previous ? (
@@ -348,25 +367,35 @@ export function HearingPage() {
         >
           Paste the stenographer's record, one “Speaker: text” per line. Each turn is numbered and every statement is linked to who said it.
         </EmptyState>
-      ) : transcript.isPending ? (
-        <SkeletonList rows={6} />
-      ) : transcript.isError ? (
-        <ErrorState error={transcript.error} retry={() => transcript.refetch()} />
       ) : (
+        <QueryView query={transcript} loading={<SkeletonList rows={6} />}>
+          {(t) => (
         <>
-          <SpeakerMapping caseId={caseId} t={transcript.data} hearingId={hearingId} />
-          {transcript.data.analysis !== 'done' && (
-            <Banner tone={transcript.data.analysisError ? 'warn' : 'info'}>
-              {transcript.data.analysisError === 'Waiting for OPENAI_API_KEY'
+          <SpeakerMapping caseId={caseId} t={t} hearingId={hearingId} />
+          {highlightsFailed && (
+            <Banner
+              tone="warn"
+              action={
+                <button type="button" className="btn btn-sm" onClick={() => (claims.refetch(), contradictions.refetch())}>
+                  Try again
+                </button>
+              }
+            >
+              The statements and contradictions in this transcript couldn't be loaded, so turns aren't highlighted.
+            </Banner>
+          )}
+          {t.analysis !== 'done' && (
+            <Banner tone={t.analysisError ? 'warn' : 'info'}>
+              {t.analysisError === 'Waiting for OPENAI_API_KEY'
                 ? 'Saved. Statements will be extracted once the AI agents are configured.'
-                : transcript.data.analysisError ?? 'The intake agent is reading this transcript.'}
+                : t.analysisError ?? 'The intake agent is reading this transcript.'}
             </Banner>
           )}
           <div className="split">
             <section aria-labelledby="tx" className="grow sheet" style={{ padding: 12 }}>
               <div className="row-between" style={{ alignItems: 'center', padding: '8px 14px 12px' }}>
                 <h2 id="tx" className="section-title">
-                  Transcript <span className="muted typed" style={{ fontSize: 13 }}>v{transcript.data.version} · {transcript.data.segmentCount} turns</span>
+                  Transcript <span className="muted typed" style={{ fontSize: 13 }}>v{t.version} · {t.segmentCount} turns</span>
                 </h2>
                 <span className="row" style={{ gap: 12, fontSize: 12 }}>
                   <span className="row" style={{ gap: 6 }}>
@@ -380,7 +409,7 @@ export function HearingPage() {
                 </span>
               </div>
               <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {transcript.data.segments.map((s) => {
+                {t.segments.map((s) => {
                   const turnClaims = byTurn.get(s.seq) ?? []
                   const isContra = turnClaims.some((c) => contradicted.has(c.claim.id))
                   return (
@@ -408,6 +437,8 @@ export function HearingPage() {
             </aside>
           </div>
         </>
+          )}
+        </QueryView>
       )}
     </>
   )

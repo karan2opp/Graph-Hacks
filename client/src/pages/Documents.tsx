@@ -2,10 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { FindingCard } from '../components/Findings'
-import { Banner, EmptyState, ErrorState, SkeletonList, useToast } from '../components/ui'
+import { Banner, EmptyState, ErrorState, Pagination, QueryView, Skeleton, SkeletonList, StaleNotice, useToast } from '../components/ui'
 import { courtDate, errorMessage, plural } from '../lib/format'
 import { api } from '../lib/api'
 import { DOC_TYPES, docState } from '../lib/documents'
+import { usePaged } from '../lib/paging'
 import { keys, useDocuments } from '../lib/queries'
 import type { Chunk, ClaimView, DocumentDetail, DocumentListItem, Finding } from '../types/domain'
 
@@ -26,6 +27,8 @@ export function DocumentsPage() {
     if (group !== 'all' && group !== 'attention' && DOC_TYPES[d.document.type]?.group !== group) return false
     return !q.trim() || d.document.title.toLowerCase().includes(q.trim().toLowerCase())
   })
+  const paged = usePaged(shown, 8)
+  const show = (g: Group) => (setGroup(g), paged.reset())
   // Keep polling while anything is still being read.
   const busy = all.some((d) => docState(d.document).text === 'Being read')
   const qc = useQueryClient()
@@ -45,25 +48,23 @@ export function DocumentsPage() {
         <div className="row">
           <label className="row" style={{ border: '1px solid var(--line)', borderRadius: 3, background: '#fff', padding: '0 12px', minHeight: 44, gap: 8 }}>
             <span className="sr-only">Search documents</span>
-            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search titles" style={{ border: 0, outline: 'none', font: 'inherit', fontSize: 14, background: 'transparent' }} />
+            <input type="search" value={q} onChange={(e) => (setQ(e.target.value), paged.reset())} placeholder="Search titles" style={{ border: 0, outline: 'none', font: 'inherit', fontSize: 14, background: 'transparent' }} />
           </label>
           <Link to={`/app/cases/${caseId}/add`} className="btn btn-primary">
             + Add document
           </Link>
         </div>
       </div>
-      {docs.isPending ? (
-        <SkeletonList rows={6} />
-      ) : docs.isError ? (
-        <ErrorState error={docs.error} retry={() => docs.refetch()} />
-      ) : all.length === 0 ? (
+      <QueryView query={docs} loading={<SkeletonList rows={6} />}>
+        {() =>
+      all.length === 0 ? (
         <EmptyState title="Nothing on file yet" action={<Link className="btn btn-primary" to={`/app/cases/${caseId}/add`}>Add the plaint or an order</Link>}>
           Upload a PDF or scan, or paste the text. Each numbered paragraph is kept with its page so every citation points to the exact place.
         </EmptyState>
       ) : (
         <>
           {attention.length > 0 && group !== 'attention' && (
-            <Banner tone="warn" action={<button type="button" className="btn btn-sm" onClick={() => setGroup('attention')}>Show them</button>}>
+            <Banner tone="warn" action={<button type="button" className="btn btn-sm" onClick={() => show('attention')}>Show them</button>}>
               <b>{plural(attention.length, 'document')} need your attention.</b> {attention.map((d) => `${d.document.title}: ${docState(d.document).text.toLowerCase()}`).join('. ')}.
             </Banner>
           )}
@@ -78,12 +79,12 @@ export function DocumentsPage() {
                 ...(attention.length ? [['attention', `Needs attention ${attention.length}`]] : []),
               ] as [Group, string][]
             ).map(([id, label]) => (
-              <button key={id} type="button" className="pill" aria-pressed={group === id} onClick={() => setGroup(id)}>
+              <button key={id} type="button" className="pill" aria-pressed={group === id} onClick={() => show(id)}>
                 {label}
               </button>
             ))}
           </div>
-          <section className="card-flush" aria-label="Documents">
+          <section className="card-flush" aria-label="Documents" ref={paged.listRef}>
             <div className="docrow docrow-head" aria-hidden="true">
               <span />
               <span>Document</span>
@@ -92,12 +93,15 @@ export function DocumentsPage() {
               <span>Memory</span>
             </div>
             {shown.length === 0 && <p className="muted" style={{ padding: 20 }}>No document matches.</p>}
-            {shown.map((d) => (
+            {paged.items.map((d) => (
               <DocRow key={d.document.id} caseId={caseId} d={d} />
             ))}
           </section>
+          <Pagination paged={paged} noun={['document', 'documents']} />
         </>
-      )}
+      )
+        }
+      </QueryView>
     </>
   )
 }
@@ -194,14 +198,42 @@ export function DocViewerPage() {
     setParams(next, { replace: true })
   }
 
-  if (doc.isPending) return <SkeletonList rows={6} />
-  if (doc.isError) return <ErrorState error={doc.error} retry={() => doc.refetch()} />
+  if (doc.data === undefined) {
+    if (doc.isError) return <ErrorState error={doc.error} retry={() => doc.refetch()} />
+    return (
+      <div className="stack" style={{ gap: 20 }} aria-busy="true">
+        <span className="sr-only" role="status">
+          Loading the document…
+        </span>
+        <div className="stack" style={{ gap: 8 }}>
+          <Skeleton height={13} width="36%" />
+          <Skeleton height={30} width="52%" />
+        </div>
+        <div className="row" style={{ alignItems: 'flex-start', gap: 20 }}>
+          <div className="stack" style={{ flex: '999 1 520px', gap: 14 }}>
+            {[96, 88, 92, 70, 84].map((w, i) => (
+              <Skeleton key={i} height={54} width={`${w}%`} />
+            ))}
+          </div>
+          <div style={{ flex: '1 1 320px' }}>
+            <Skeleton height={160} />
+          </div>
+        </div>
+      </div>
+    )
+  }
   const d = doc.data
   const state = docState(d)
   const selClaims = selected ? (claimsByChunk.get(paraKey(selected)) ?? []) : []
 
   return (
     <>
+      {doc.isError && <StaleNotice error={doc.error} retry={() => doc.refetch()} />}
+      {claims.isError && (
+        <Banner tone="warn" action={<button type="button" className="btn btn-sm" onClick={() => claims.refetch()}>Try again</button>}>
+          The statements recorded from this document couldn't be loaded, so paragraphs aren't highlighted.
+        </Banner>
+      )}
       {params.get('from') === 'ask' && wanted && (
         <Banner tone="info" action={<Link to={`/app/cases/${caseId}/ask${params.get('c') ? `?c=${params.get('c')}` : ''}`} className="btn btn-sm">Back to the answer</Link>}>
           Opened from your answer: paragraph {wanted}{selected ? ` on page ${selected.page}` : ''}.
@@ -231,9 +263,9 @@ export function DocViewerPage() {
       </div>
       {state.tone !== 'ok' && <Banner tone={state.tone === 'bad' ? 'error' : 'warn'}>{state.text}. {state.detail}</Banner>}
 
-      {chunks.isPending ? (
-        <SkeletonList rows={5} />
-      ) : list.length === 0 ? (
+      <QueryView query={chunks} loading={<SkeletonList rows={5} />}>
+        {() =>
+      list.length === 0 ? (
         <EmptyState title="No text to show">This document has no readable text. Upload a clearer copy or paste the text as a new document.</EmptyState>
       ) : (
         <div className="row" style={{ alignItems: 'flex-start', gap: 20, flexWrap: 'wrap' }}>
@@ -292,7 +324,9 @@ export function DocViewerPage() {
             {selClaims[0] && <Related caseId={caseId} claimId={selClaims[0].claim.id} />}
           </aside>
         </div>
-      )}
+      )
+        }
+      </QueryView>
     </>
   )
 }
@@ -311,20 +345,18 @@ function splitPara(c: Chunk): { caption: string; body: string } {
 
 function Related({ caseId, claimId }: { caseId: string; claimId: string }) {
   const related = useQuery({ queryKey: ['case', caseId, 'related', claimId], queryFn: () => api.get<Finding[]>(`/claims/${claimId}/related`) })
-  if (related.isPending) return <SkeletonList rows={2} />
-  if (related.isError) return <ErrorState error={related.error} retry={() => related.refetch()} />
-  if (!related.data.length)
-    return (
-      <p className="empty ink-2" style={{ fontSize: 14 }}>
-        Nothing else in the case contradicts or supports this paragraph yet. The fact-check agent looks again when new material is added.
-      </p>
-    )
   return (
-    <>
-      {related.data.map((f) => (
-        <FindingCard key={f.id} f={f} caseId={caseId} compact focusClaimId={claimId} />
-      ))}
-    </>
+    <QueryView query={related} loading={<SkeletonList rows={2} />}>
+      {(found) =>
+        found.length ? (
+          found.map((f) => <FindingCard key={f.id} f={f} caseId={caseId} compact focusClaimId={claimId} />)
+        ) : (
+          <p className="empty ink-2" style={{ fontSize: 14 }}>
+            Nothing else in the case contradicts or supports this paragraph yet. The fact-check agent looks again when new material is added.
+          </p>
+        )
+      }
+    </QueryView>
   )
 }
 

@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { TopBar } from '../components/TopBar'
-import { EmptyState, ErrorState, Skeleton, SkeletonList } from '../components/ui'
-import { inDays, longDate, plural, todayIST } from '../lib/format'
+import { Banner, EmptyState, Pagination, QueryView, Skeleton, SkeletonList } from '../components/ui'
+import { errorMessage, inDays, longDate, plural, todayIST } from '../lib/format'
 import { useMe } from '../lib/auth'
+import { usePaged } from '../lib/paging'
 import { shortTitle, useCaseCards, useDashboard } from '../lib/queries'
 import type { CaseCard } from '../types/domain'
 
@@ -14,15 +15,21 @@ const greeting = () => {
 
 function AttentionStrip() {
   const dash = useDashboard()
-  if (dash.isPending)
+  if (dash.data === undefined) {
+    if (dash.isError)
+      return (
+        <Banner tone="warn" action={<button type="button" className="btn btn-sm" onClick={() => dash.refetch()}>Try again</button>}>
+          Couldn't load what needs you this week ({errorMessage(dash.error)}).
+        </Banner>
+      )
     return (
-      <div className="grid-auto">
+      <div className="grid-auto" aria-busy="true">
         <Skeleton height={150} />
         <Skeleton height={150} />
         <Skeleton height={150} />
       </div>
     )
-  if (dash.isError) return null
+  }
   const d = dash.data
   const contra = d.newContradictions.reduce((n, c) => n + c.count, 0)
   return (
@@ -134,6 +141,7 @@ export function CasesPage() {
     if (sort === 'recent') return [...list].sort((a, b) => b.case.createdAt.localeCompare(a.case.createdAt))
     return [...list].sort(byNext)
   }, [cards.data, q, sort])
+  const paged = usePaged(shown, 10)
 
   return (
     <>
@@ -155,7 +163,7 @@ export function CasesPage() {
                 <path d="M11 11l3.5 3.5" />
               </svg>
               <span className="sr-only">Search cases</span>
-              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by party, case no., court" style={{ border: 0, outline: 'none', font: 'inherit', fontSize: 14, flex: 1, background: 'transparent' }} />
+              <input type="search" value={q} onChange={(e) => (setQ(e.target.value), paged.reset())} placeholder="Search by party, case no., court" style={{ border: 0, outline: 'none', font: 'inherit', fontSize: 14, flex: 1, background: 'transparent' }} />
             </label>
             <Link to="/app/cases/new" className="btn btn-primary">
               + New case
@@ -165,48 +173,51 @@ export function CasesPage() {
 
         {cards.data && cards.data.length > 0 && <AttentionStrip />}
 
-        {cards.isPending ? (
-          <SkeletonList rows={4} />
-        ) : cards.isError ? (
-          <ErrorState error={cards.error} retry={() => cards.refetch()} />
-        ) : cards.data.length === 0 ? (
-          <EmptyState title="Start your first case" action={<Link to="/app/cases/new" className="btn btn-primary">Create a case</Link>}>
-            Add the parties and the first hearing, then drop in the plaint, orders and transcripts. The agents will read them and keep the memory up to date.
-          </EmptyState>
-        ) : (
-          <section aria-labelledby="all" className="card-flush">
-            <div className="row-between" style={{ alignItems: 'center', padding: '14px 20px' }}>
-              <h2 id="all" className="section-title">
-                All cases <span className="muted" style={{ fontSize: 15 }}>· {cards.data.length} active</span>
-              </h2>
-              <div className="pills" role="group" aria-label="Sort cases">
-                {SORTS.map(([id, label]) => (
-                  <button key={id} type="button" className="pill" aria-pressed={sort === id} onClick={() => setSort(id)}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="case-row case-row-head" aria-hidden="true">
-              <span>Case</span>
-              <span>Stage</span>
-              <span>Next hearing</span>
-              <span>In memory</span>
-              <span>Flags</span>
-            </div>
-            {shown.length ? (
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {shown.map((c) => (
-                  <CaseRow key={c.case.id} c={c} />
-                ))}
-              </ul>
+        <QueryView query={cards} loading={<SkeletonList rows={5} />}>
+          {(all) =>
+            all.length === 0 ? (
+              <EmptyState title="Start your first case" action={<Link to="/app/cases/new" className="btn btn-primary">Create a case</Link>}>
+                Add the parties and the first hearing, then drop in the plaint, orders and transcripts. The agents will read them and keep the memory up to date.
+              </EmptyState>
             ) : (
-              <p className="muted" style={{ padding: 20 }}>
-                No case matches “{q}”.
-              </p>
-            )}
-          </section>
-        )}
+              <section aria-labelledby="all" className="card-flush" ref={paged.listRef}>
+                <div className="row-between" style={{ alignItems: 'center', padding: '14px 20px' }}>
+                  <h2 id="all" className="section-title">
+                    All cases <span className="muted" style={{ fontSize: 15 }}>· {all.length} active</span>
+                  </h2>
+                  <div className="pills" role="group" aria-label="Sort cases">
+                    {SORTS.map(([id, label]) => (
+                      <button key={id} type="button" className="pill" aria-pressed={sort === id} onClick={() => (setSort(id), paged.reset())}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="case-row case-row-head" aria-hidden="true">
+                  <span>Case</span>
+                  <span>Stage</span>
+                  <span>Next hearing</span>
+                  <span>In memory</span>
+                  <span>Flags</span>
+                </div>
+                {shown.length ? (
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                    {paged.items.map((c) => (
+                      <CaseRow key={c.case.id} c={c} />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted" style={{ padding: 20 }}>
+                    No case matches “{q}”.
+                  </p>
+                )}
+                <div style={{ padding: '6px 20px 16px' }}>
+                  <Pagination paged={paged} noun={['case', 'cases']} />
+                </div>
+              </section>
+            )
+          }
+        </QueryView>
         <p className="muted" style={{ fontSize: 12 }}>
           A case organiser and memory aid for lawyers, not legal advice.
         </p>

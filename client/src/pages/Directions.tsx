@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { EmptyState, ErrorState, SkeletonList, Stamp, useToast, type StampTone } from '../components/ui'
+import { Banner, EmptyState, Pagination, QueryView, Skeleton, SkeletonList, Stamp, useToast, type StampTone } from '../components/ui'
 import { courtDate, daysBetween, errorMessage, todayIST } from '../lib/format'
 import { api } from '../lib/api'
+import { usePaged } from '../lib/paging'
 import { keys } from '../lib/queries'
 import type { ComplianceReport, DirectionState, DirectionView } from '../types/domain'
 
@@ -94,6 +95,7 @@ export function DirectionsPage() {
   const all = [...(directions.data ?? [])].sort((a, b) => ORDER[a.state] - ORDER[b.state] || (a.direction.dueDate ?? '9').localeCompare(b.direction.dueDate ?? '9'))
   const shown = filter === 'all' ? all : all.filter((d) => d.state === filter)
   const count = (f: Filter) => (f === 'all' ? all.length : all.filter((d) => d.state === f).length)
+  const paged = usePaged(shown, 8)
 
   return (
     <>
@@ -102,11 +104,9 @@ export function DirectionsPage() {
         <p className="lede">Every direction from every order, who it binds, and the filing or order that shows it was followed. Only filings and later orders count as proof, never what was said at a hearing.</p>
       </div>
 
-      {directions.isPending ? (
-        <SkeletonList rows={5} />
-      ) : directions.isError ? (
-        <ErrorState error={directions.error} retry={() => directions.refetch()} />
-      ) : all.length === 0 ? (
+      <QueryView query={directions} loading={<SkeletonList rows={5} />}>
+        {() =>
+      all.length === 0 ? (
         <EmptyState title="No directions yet" action={<Link className="btn" to={`/app/cases/${caseId}/add`}>Add an order</Link>}>
           When you add an order, the intake agent reads its directions and due dates, and the compliance agent watches for the filings that satisfy them.
         </EmptyState>
@@ -118,7 +118,7 @@ export function DirectionsPage() {
                 key={id}
                 type="button"
                 aria-pressed={filter === id}
-                onClick={() => setFilter(id)}
+                onClick={() => (setFilter(id), paged.reset())}
                 className="stack"
                 style={{
                   gap: 2,
@@ -140,7 +140,7 @@ export function DirectionsPage() {
             ))}
           </div>
 
-          <section aria-labelledby="ledger" className="card-flush">
+          <section aria-labelledby="ledger" className="card-flush" ref={paged.listRef}>
             <div className="row-between" style={{ alignItems: 'center', padding: '14px 20px' }}>
               <h2 id="ledger" className="section-title">
                 {filter === 'all' ? 'All directions, most urgent first' : TABS.find((t) => t[0] === filter)![1]}
@@ -155,7 +155,7 @@ export function DirectionsPage() {
               <span>Your call</span>
             </div>
             {shown.length === 0 && <p className="muted" style={{ padding: 20 }}>Nothing in this group.</p>}
-            {shown.map((d) => {
+            {paged.items.map((d) => {
               const s = stampFor(d)
               return (
                 <div key={d.direction.id} className="drow">
@@ -185,8 +185,22 @@ export function DirectionsPage() {
                 </div>
               )
             })}
+            <div style={{ padding: '6px 20px 16px' }}>
+              <Pagination paged={paged} noun={['direction', 'directions']} />
+            </div>
           </section>
 
+          {report.isPending && (
+            <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }} aria-busy="true">
+              <Skeleton height={110} />
+              <Skeleton height={110} />
+            </div>
+          )}
+          {report.isError && !report.data && (
+            <Banner tone="warn" action={<button type="button" className="btn btn-sm" onClick={() => report.refetch()}>Try again</button>}>
+              Couldn't load the compliance record by party.
+            </Banner>
+          )}
           {report.data && report.data.byParty.length > 0 && (
             <section aria-label="Compliance record by party" className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
               {report.data.byParty.map((p) => (
@@ -219,7 +233,9 @@ export function DirectionsPage() {
             </section>
           )}
         </>
-      )}
+      )
+        }
+      </QueryView>
     </>
   )
 }

@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { ToastProvider } from './components/ui'
+import { OfflineBanner, ToastProvider } from './components/ui'
 import { ApiError } from './lib/api'
 import './styles/theme.css'
 
@@ -25,6 +25,7 @@ createRoot(document.getElementById('root')!).render(
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <ToastProvider>
+            <OfflineBanner />
             <App />
           </ToastProvider>
         </BrowserRouter>

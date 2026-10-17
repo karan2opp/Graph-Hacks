@@ -2,9 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { FindingCard, Ref } from '../components/Findings'
-import { EmptyState, ErrorState, SkeletonList } from '../components/ui'
+import { EmptyState, ErrorState, Pagination, QueryView, SkeletonList } from '../components/ui'
 import { courtDate, plural } from '../lib/format'
 import { api } from '../lib/api'
+import { usePaged } from '../lib/paging'
 import { keys, usePeople } from '../lib/queries'
 import type { ClaimView, Finding, Subject } from '../types/domain'
 
@@ -68,7 +69,17 @@ function Drift({ caseId, contradictions }: { caseId: string; contradictions: Fin
           </label>
         </div>
       </div>
-      {claims.isPending && pid ? (
+      {(people.isError || subjects.isError) && (
+        <p className="row" style={{ color: 'var(--wood-text)', fontSize: 14 }}>
+          Couldn't load the people or subjects of this case.
+          <button type="button" className="btn btn-sm btn-on-wood" onClick={() => (people.refetch(), subjects.refetch())}>
+            Try again
+          </button>
+        </p>
+      )}
+      {claims.isError && !claims.data ? (
+        <ErrorState error={claims.error} retry={() => claims.refetch()} />
+      ) : claims.isPending && pid ? (
         <SkeletonList rows={2} />
       ) : list.length === 0 ? (
         <p style={{ color: 'var(--wood-text)' }}>No recorded statements by this person{subject ? ' on this subject' : ''} yet.</p>
@@ -121,6 +132,7 @@ export function StoryDriftPage() {
   const count = (c: Filter) => (c === 'disputes' ? (disputes.data?.length ?? 0) : c === 'all' ? all.length : all.filter((f) => f.category === c).length)
   const shown = filter === 'disputes' ? (disputes.data ?? []) : filter === 'all' ? all : all.filter((f) => f.category === filter)
   const active = all.filter((f) => !f.dismissed)
+  const paged = usePaged(shown, 6)
 
   return (
     <>
@@ -129,17 +141,17 @@ export function StoryDriftPage() {
         <p className="lede">How each person's account has moved over time. A contradiction is only shown when both statements cannot be true together.</p>
       </div>
 
-      {contradictions.isPending ? (
-        <SkeletonList rows={3} />
-      ) : contradictions.isError ? (
-        <ErrorState error={contradictions.error} retry={() => contradictions.refetch()} />
-      ) : active.length === 0 && !showDismissed ? (
-        <EmptyState title="No contradictions found yet" action={<Link className="btn" to={`/app/cases/${caseId}/add`}>Add a document</Link>}>
-          The fact-check agent compares every new statement with what the same person, their side, and the record said before. Findings appear here.
-        </EmptyState>
-      ) : (
-        <Drift caseId={caseId} contradictions={active} />
-      )}
+      <QueryView query={contradictions} loading={<SkeletonList rows={3} />}>
+        {() =>
+          active.length === 0 && !showDismissed ? (
+            <EmptyState title="No contradictions found yet" action={<Link className="btn" to={`/app/cases/${caseId}/add`}>Add a document</Link>}>
+              The fact-check agent compares every new statement with what the same person, their side, and the record said before. Findings appear here.
+            </EmptyState>
+          ) : (
+            <Drift caseId={caseId} contradictions={active} />
+          )
+        }
+      </QueryView>
 
       <section aria-labelledby="findings" className="stack" style={{ gap: 14 }}>
         <div className="row-between" style={{ alignItems: 'center' }}>
@@ -156,27 +168,36 @@ export function StoryDriftPage() {
                 ['disputes', 'Disputes'],
               ] as const
             ).map(([id, label]) => (
-              <button key={id} type="button" className="pill" aria-pressed={filter === id} onClick={() => setFilter(id)}>
+              <button key={id} type="button" className="pill" aria-pressed={filter === id} onClick={() => (setFilter(id), paged.reset())}>
                 {label} · {count(id)}
               </button>
             ))}
           </div>
         </div>
         <label className="row" style={{ fontSize: 14, gap: 8 }}>
-          <input type="checkbox" checked={showDismissed} onChange={(e) => setShowDismissed(e.target.checked)} />
+          <input type="checkbox" checked={showDismissed} onChange={(e) => (setShowDismissed(e.target.checked), paged.reset())} />
           Show findings marked “not a contradiction”
         </label>
-        {shown.length === 0 ? (
-          <p className="empty ink-2" style={{ fontSize: 15 }}>
-            {filter === 'disputes'
-              ? 'No points of dispute recorded yet. Disputes are where the two sides simply disagree, which is the case itself rather than a contradiction.'
-              : filter === 'same_side'
-                ? 'No one has contradicted their own side.'
-                : 'Nothing here.'}
-          </p>
-        ) : (
-          shown.map((f) => <FindingCard key={f.id} f={f} caseId={caseId} />)
-        )}
+        <QueryView query={filter === 'disputes' ? disputes : contradictions} loading={<SkeletonList rows={3} />}>
+          {() =>
+            shown.length === 0 ? (
+              <p className="empty ink-2" style={{ fontSize: 15 }}>
+                {filter === 'disputes'
+                  ? 'No points of dispute recorded yet. Disputes are where the two sides simply disagree, which is the case itself rather than a contradiction.'
+                  : filter === 'same_side'
+                    ? 'No one has contradicted their own side.'
+                    : 'Nothing here.'}
+              </p>
+            ) : (
+              <div className="stack" style={{ gap: 14 }} ref={paged.listRef as React.Ref<HTMLDivElement>}>
+                {paged.items.map((f) => (
+                  <FindingCard key={f.id} f={f} caseId={caseId} />
+                ))}
+                <Pagination paged={paged} noun={['finding', 'findings']} />
+              </div>
+            )
+          }
+        </QueryView>
         {filter !== 'disputes' && active.length > 0 && (
           <p className="muted" style={{ fontSize: 13 }}>
             {plural(active.filter((f) => f.crossPrep).length, 'finding')} in cross prep.

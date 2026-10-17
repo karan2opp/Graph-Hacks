@@ -4,7 +4,7 @@ import { Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { api, ApiError, onUnauthorized } from './api'
 import { keys } from './queries'
 import type { User } from '../types/domain'
-import { PageLoader } from '../components/ui'
+import { ErrorState, PageLoader } from '../components/ui'
 
 
 
@@ -45,8 +45,17 @@ export function RequireAuth() {
   const me = useMe()
   const location = useLocation()
   useSessionWatcher()
-  if (me.isPending) return <PageLoader label="Opening your cases" />
-  if (!me.data) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  if (me.data === undefined) {
+    // Only a 401 means signed out (useMe returns null). Offline or a server error must not bounce you to sign-in.
+    if (me.isError)
+      return (
+        <main className="page">
+          <ErrorState error={me.error} retry={() => me.refetch()} title="Couldn't open your account" />
+        </main>
+      )
+    return <PageLoader label="Opening your cases" />
+  }
+  if (me.data === null) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   return <Outlet />
 }
 

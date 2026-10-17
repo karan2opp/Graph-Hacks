@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { Banner, ErrorState, SkeletonList } from '../components/ui'
+import { Banner, ErrorState, SkeletonList, StaleNotice } from '../components/ui'
 import { courtDate, errorMessage } from '../lib/format'
 import { api, ApiError } from '../lib/api'
 import { keys } from '../lib/queries'
@@ -193,8 +193,14 @@ export function AskPage() {
         <div className="row">
           <label className="row" style={{ gap: 8, fontSize: 14 }}>
             Conversation
-            <select className="select" style={{ width: 'auto', minWidth: 220 }} value={conversationId ?? ''} onChange={(e) => (e.target.value ? setParams({ c: e.target.value }) : setParams({}))}>
-              <option value="">New conversation</option>
+            <select
+              className="select"
+              style={{ width: 'auto', minWidth: 220 }}
+              value={conversationId ?? ''}
+              aria-busy={conversations.isPending}
+              onChange={(e) => (e.target.value ? setParams({ c: e.target.value }) : setParams({}))}
+            >
+              <option value="">{conversations.isPending ? 'Loading past conversations…' : 'New conversation'}</option>
               {conversations.data?.map((c) => (
                 <option key={c.conversation.id} value={c.conversation.id}>
                   {c.conversation.title} · {courtDate(c.conversation.updatedAt)}
@@ -202,6 +208,11 @@ export function AskPage() {
               ))}
             </select>
           </label>
+          {conversations.isError && (
+            <button type="button" className="btn btn-sm" onClick={() => conversations.refetch()} title="Past conversations couldn't be loaded">
+              Reload past conversations
+            </button>
+          )}
         </div>
       </div>
       {aiOff && <Banner tone="warn">Answers need the AI agents, which are not configured yet: set OPENAI_API_KEY in server/.env and restart the API. You can still type a question; past conversations and the rest of the case work as normal.</Banner>}
@@ -209,7 +220,12 @@ export function AskPage() {
       <div className="split">
         <section aria-label="Conversation" className="grow stack" style={{ gap: 16 }}>
           {conversationId && conversation.isPending && <SkeletonList rows={3} />}
-          {conversation.isError && <ErrorState error={conversation.error} retry={() => conversation.refetch()} />}
+          {conversation.isError &&
+            (conversation.data ? (
+              <StaleNotice error={conversation.error} retry={() => conversation.refetch()} />
+            ) : (
+              <ErrorState error={conversation.error} retry={() => conversation.refetch()} />
+            ))}
           {!conversationId && !pending && (
             <div className="card stack" style={{ gap: 10 }}>
               <h2 className="section-title">Ask in plain words</h2>
@@ -243,7 +259,8 @@ export function AskPage() {
             <>
               <div className="bubble-q">{pending}</div>
               <div className="card row" aria-live="polite">
-                <span className="spinner" aria-hidden="true" /> Searching the case memory…
+                <span className="spinner" aria-hidden="true" />
+                {ask.isPaused ? "You're offline. Your question will be sent as soon as you reconnect." : 'Searching the case memory…'}
               </div>
             </>
           )}

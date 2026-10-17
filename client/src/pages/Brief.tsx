@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router'
-import { EmptyState, ErrorState, Skeleton } from '../components/ui'
+import { EmptyState, ErrorState, Skeleton, StaleNotice } from '../components/ui'
 import { courtDate, daysBetween, inDays, longDate, plural } from '../lib/format'
 import { useBrief } from '../lib/queries'
 import type { Brief } from '../types/domain'
@@ -142,15 +142,30 @@ function Timeline({ b, caseId }: { b: Brief; caseId: string }) {
 export function BriefPage() {
   const { caseId = '' } = useParams()
   const brief = useBrief(caseId)
-  if (brief.isPending)
+  if (brief.data === undefined) {
+    if (brief.isError) return <ErrorState error={brief.error} retry={() => brief.refetch()} />
     return (
-      <div className="stack" aria-busy="true">
-        <Skeleton height={60} width="60%" />
-        <Skeleton height={240} />
-        <Skeleton height={160} />
+      <div className="stack" style={{ gap: 24 }} aria-busy="true">
+        <span className="sr-only" role="status">
+          Loading the brief…
+        </span>
+        <div className="stack" style={{ gap: 10 }}>
+          <Skeleton height={13} width="34%" />
+          <Skeleton height={36} width="58%" />
+          <Skeleton height={14} width="46%" />
+        </div>
+        <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+          <Skeleton height={200} />
+          <Skeleton height={200} />
+        </div>
+        <Skeleton height={140} />
+        <div className="grid-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+          <Skeleton height={180} />
+          <Skeleton height={180} />
+        </div>
       </div>
     )
-  if (brief.isError) return <ErrorState error={brief.error} retry={() => brief.refetch()} />
+  }
   const b = brief.data
   const c = b.case
   const judge = b.people.find((p) => p.kind === 'Judge')
@@ -159,6 +174,7 @@ export function BriefPage() {
 
   return (
     <>
+      {brief.isError && <StaleNotice error={brief.error} retry={() => brief.refetch()} />}
       <div className="row-between">
         <div className="stack" style={{ gap: 6 }}>
           <span className="typed muted" style={{ fontSize: 13 }}>
