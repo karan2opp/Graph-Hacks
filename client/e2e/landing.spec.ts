@@ -15,3 +15,17 @@ test('landing tells the story and leads into the app', async ({ page }) => {
   await page.getByRole('link', { name: 'Sign in' }).first().click()
   await expect(page).toHaveURL(/\/login$/)
 })
+
+test('a stamp on the order sheet can be overruled and restored', async ({ page }) => {
+  await page.goto('/')
+  const orders = page.locator('#orders')
+  const tally = orders.getByRole('complementary', { name: 'At a glance' }).getByRole('listitem').filter({ hasText: 'Overdue' })
+  await orders.getByRole('button', { name: 'OVERDUE' }).click()
+  await expect(orders.getByRole('button', { name: 'FILED BY HAND' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(orders.getByText('Your call: handed in at the counter on 05.10.2026.')).toBeVisible()
+  await expect(tally).toContainText('0')
+
+  await orders.getByRole('button', { name: 'FILED BY HAND' }).click()
+  await expect(orders.getByRole('button', { name: 'OVERDUE' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(tally).toContainText('1')
+})
