@@ -1,0 +1,43 @@
+/* Ported from the Landing artboard; every rule is scoped to .landing so it can't leak into the app. */
+.landing{margin:0;background:#E3EADF;color:#1B2430;font-family:'IBM Plex Sans',system-ui,sans-serif}
+.landing a{color:#1B2430}
+.landing a:hover{color:#A8231B}
+.landing a:focus-visible,.landing button:focus-visible{outline:3px solid #C9A464;outline-offset:3px}
+.landing .display{font-family:'Spectral',Georgia,serif}
+.landing .caps{font-family:'Spectral',Georgia,serif;font-variant:small-caps;letter-spacing:0.08em}
+.landing .typed{font-family:'Courier Prime','Courier New',monospace}
+.landing .ruled{background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 27px,#C9D4C4 27px,#C9D4C4 28px)}
+.landing .wood{background-color:#3A2119;background-image:repeating-linear-gradient(92deg,rgba(255,255,255,0.025) 0,rgba(255,255,255,0.025) 2px,transparent 2px,transparent 9px),repeating-linear-gradient(88deg,rgba(0,0,0,0.08) 0,rgba(0,0,0,0.08) 1px,transparent 1px,transparent 23px)}
+.landing .thread{stroke-dasharray:900;stroke-dashoffset:900;animation:draw 1.6s 0.5s cubic-bezier(.6,0,.2,1) forwards}
+.landing .tag{opacity:0;animation:show .4s 1.9s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes show{to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.landing .thread{animation:none;stroke-dashoffset:0}
+.landing .tag{animation:none;opacity:1}
+}
+.landing .btn{display:inline-flex;align-items:center;height:52px;padding:0 26px;border-radius:3px;background:#C9A464;color:#2A1711;text-decoration:none;font-weight:600;font-size:16px}
+.landing .btn:hover{background:#E0BE80;color:#2A1711}
+.landing .toplink{color:#E9EFE5;text-decoration:none;min-height:44px;display:inline-flex;align-items:center}
+.landing .toplink:hover{color:#E0BE80}
+.landing .ledger{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:24px 48px;align-items:baseline;padding:36px 0;border-top:1px solid #B5C3B0}
+.landing .cl{display:grid;grid-template-columns:64px minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.6fr);gap:20px;padding:18px 0;border-top:1px solid #CFC4A6;align-items:baseline}
+.landing .os{display:grid;grid-template-columns:112px minmax(0,1fr) 200px;gap:20px;align-items:center;min-height:84px;border-top:1px solid #C9D4C4}
+.landing .stamp{justify-self:start;font-family:'Courier Prime',monospace;font-weight:700;font-size:15px;letter-spacing:0.08em;padding:6px 12px;border:3px double currentColor;border-radius:4px;opacity:0.88;mix-blend-mode:multiply}
+@media (max-width:760px){.landing .ledger,.landing .cl,.landing .os{grid-template-columns:minmax(0,1fr)}
+}
+.landing .forearm{transform-box:fill-box;transform-origin:0% 50%;animation:tap .3s ease-in-out infinite alternate}
+.landing .f2{animation-delay:.15s}
+.landing .key{animation:press .3s ease-in-out infinite alternate}
+.landing .k2{animation-delay:.15s}
+@keyframes press{from{transform:translateY(0)}to{transform:translateY(2px)}}
+@media (prefers-reduced-motion:reduce){.landing .key{animation:none}
+}
+.landing .nod{transform-box:fill-box;transform-origin:40% 100%;animation:nod 1.4s ease-in-out infinite alternate}
+@keyframes tap{from{transform:rotate(-5deg)}to{transform:rotate(6deg)}}
+@keyframes carriage{from{transform:translateX(12px)}to{transform:translateX(-12px)}}
+@keyframes nod{from{transform:rotate(-1.5deg)}to{transform:rotate(2deg)}}
+@media (prefers-reduced-motion:reduce){.landing .forearm,.landing .carriage,.landing .nod{animation:none}
+}
+.landing .steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
+@media (max-width:760px){.landing .steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
