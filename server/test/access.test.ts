@@ -19,7 +19,7 @@ before(async () => {
   caseId = kase.body.data.id;
   const h = await a.post(`/cases/${caseId}/hearings`, { date: "2021-03-10", purpose: "Written statement" });
   assert.equal(h.status, 201, JSON.stringify(h.body));
-  hearingId = h.body.data.id;
+  hearingId = h.body.data.hearing.id;
   const d = await a.post(`/cases/${caseId}/documents`, { title: "Written statement", type: "written_statement", text: "1. The defendant denies receipt." });
   assert.equal(d.status, 201, JSON.stringify(d.body));
   documentId = d.body.data.id;

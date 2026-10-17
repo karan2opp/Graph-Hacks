@@ -63,13 +63,13 @@ async function run(label: Owner, id: string, work: () => Promise<Record<string, 
 
 export async function analyzeDocument(documentId: string): Promise<void> {
   const doc = await queryOne<{
-    caseId: string; title: string; type: string; date: string | null; private: boolean;
+    caseId: string; title: string; type: string; date: string | null; filedOn: string | null; private: boolean;
     hearingId: string | null; filedById: string | null; hearingDate: string | null;
   }>(
     `MATCH (d:Document {id: $documentId})
      OPTIONAL MATCH (d)-[:SUBMITTED_IN]->(h:Hearing)
      OPTIONAL MATCH (d)-[:FILED_BY]->(p:Party)
-     RETURN d.caseId AS caseId, d.title AS title, d.type AS type, d.date AS date, d.private AS private,
+     RETURN d.caseId AS caseId, d.title AS title, d.type AS type, d.date AS date, d.filedOn AS filedOn, d.private AS private,
             h.id AS hearingId, h.date AS hearingDate, p.id AS filedById`,
     { documentId },
   );
@@ -115,7 +115,8 @@ export async function analyzeDocument(documentId: string): Promise<void> {
       sourceType: "document",
       sourceId: documentId,
       title: `${doc.title} (${doc.type.replace(/_/g, " ")})`,
-      statedOn: doc.date ?? doc.hearingDate,
+      // A filing with no date of its own speaks on the day it was filed.
+      statedOn: doc.date ?? doc.filedOn ?? doc.hearingDate,
       hearingId: doc.hearingId,
       internal: Boolean(doc.private),
       // Whoever filed a sale deed or FIR did not author it, so do not fall back to the filer.

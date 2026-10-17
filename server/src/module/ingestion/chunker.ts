@@ -28,6 +28,20 @@ function pack(pieces: string[], joiner: string): string[] {
   return out;
 }
 
+/**
+ * PDF text has no blank lines between paragraphs, so a numbered line ("2. That the...") also
+ * starts a new block. Otherwise a whole page becomes one chunk and every claim on it is cited
+ * as its first paragraph.
+ */
+function splitNumbered(block: string): string[] {
+  const out: string[] = [];
+  for (const line of block.split("\n")) {
+    if (!out.length || PARA_NUMBER.test(line)) out.push(line);
+    else out[out.length - 1] += `\n${line}`;
+  }
+  return out;
+}
+
 function splitLong(block: string): string[] {
   if (block.length <= MAX_CHARS) return [block];
   const lines = block.split("\n").filter((l) => l.trim());
@@ -51,6 +65,7 @@ export function chunkPages(pages: string[]): ChunkDraft[] {
       .split(/\n\s*\n/)
       .map((b) => b.replace(/[ \t]+/g, " ").trim())
       .filter(Boolean)
+      .flatMap(splitNumbered)
       .flatMap(splitLong);
 
     // Merge short unnumbered blocks (headings, signatures) into the block that follows.
