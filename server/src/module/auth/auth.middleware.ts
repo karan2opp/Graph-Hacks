@@ -97,7 +97,7 @@ export function guardParams(router: Router) {
  * Fixed-window limiter for sign-in and sign-up.
  * ponytail: in-memory per process; move to FalkorDB/Redis if the API runs on more than one instance.
  */
-export function rateLimit(opts: { windowMs: number; max: number; key: (req: Request) => string }): RequestHandler {
+export function rateLimit(opts: { windowMs: number; max: number; key: (req: Request) => string; message?: string }): RequestHandler {
   const hits = new Map<string, { count: number; resetAt: number }>();
   return (req, res, next) => {
     const now = Date.now();
@@ -110,8 +110,19 @@ export function rateLimit(opts: { windowMs: number; max: number; key: (req: Requ
     }
     if (++entry.count > opts.max) {
       res.setHeader("Retry-After", Math.ceil((entry.resetAt - now) / 1000));
-      return next(new ApiError(429, "Too many attempts. Wait a few minutes and try again.", { code: "RATE_LIMITED" }));
+      return next(new ApiError(429, opts.message ?? "Too many attempts. Wait a few minutes and try again.", { code: "RATE_LIMITED" }));
     }
     next();
   };
 }
+
+/**
+ * One shared budget per firm for every route that calls OpenAI (ask, re-analyse, fact-check, uploads),
+ * so open sign-up can't run up the bill. Mount after requireAuth.
+ */
+export const aiLimit = rateLimit({
+  windowMs: 60 * 60_000,
+  max: 60,
+  key: (req) => `ai:${req.user!.firmId}`,
+  message: "Your firm has reached the hourly limit for the AI agents. Try again later.",
+});

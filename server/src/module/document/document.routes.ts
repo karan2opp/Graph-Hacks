@@ -1,4 +1,4 @@
-import { guardParams } from "../auth/index.js";
+import { aiLimit, guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { uploadSingle } from "../../common/media/index.js";
 import { validate } from "../../common/middleware/index.js";
@@ -23,6 +23,7 @@ guardParams(documentRouter);
  */
 documentRouter.post(
   "/cases/:caseId/documents",
+  aiLimit, // before the upload, so a refused request isn't buffered first
   uploadSingle(),
   validate({ params: caseIdParams, body: createDocumentBody }),
   async (req, res) => {

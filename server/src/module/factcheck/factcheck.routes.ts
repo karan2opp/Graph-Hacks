@@ -1,4 +1,4 @@
-import { guardParams } from "../auth/index.js";
+import { aiLimit, guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { z } from "zod";
 import { isAIEnabled } from "../../common/ai/index.js";
@@ -55,7 +55,7 @@ factCheckRouter.patch("/links/:linkId", validate({ params: z.object({ linkId: id
 });
 
 /** POST /cases/:caseId/factcheck  -> re-check every claim of the case in the background (202) */
-factCheckRouter.post("/cases/:caseId/factcheck", validate({ params: caseIdParams }), async (req, res) => {
+factCheckRouter.post("/cases/:caseId/factcheck", aiLimit, validate({ params: caseIdParams }), async (req, res) => {
   const { caseId } = ApiRequest.from<unknown, unknown, { caseId: string }>(req).params;
   await requireCase(caseId);
   if (!isAIEnabled()) throw ApiError.serviceUnavailable("The fact-check agent needs OPENAI_API_KEY to be set");

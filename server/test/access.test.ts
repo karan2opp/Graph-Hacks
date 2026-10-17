@@ -61,3 +61,22 @@ describe("firm isolation", () => {
     assert.equal((await a.get(`/documents/${documentId}`)).status, 200);
   });
 });
+
+describe("shared services", () => {
+  it("exposes no direct file storage routes", async () => {
+    assert.equal((await a.del("/media/some-file-id")).status, 404);
+    assert.equal((await a.get("/media/auth")).status, 404);
+  });
+
+  it("caps each firm's calls to the AI agents per hour", async () => {
+    const { c } = await newFirm(srv.base, "Busy firm");
+    const kase = await c.post("/cases", { caseNumber: "CS 7/2024", title: "Busy v. Busy", court: "Civil Judge", caseType: "civil" });
+    const ask = () => c.post(`/cases/${kase.body.data.id}/ask`, { question: "What is pending?" });
+    for (let i = 0; i < 60; i++) assert.notEqual((await ask()).status, 429, `call ${i + 1}`);
+    const res = await ask();
+    assert.equal(res.status, 429);
+    assert.equal(res.body.code, "RATE_LIMITED");
+    // Another firm has its own budget.
+    assert.notEqual((await a.post(`/cases/${caseId}/ask`, { question: "What is pending?" })).status, 429);
+  });
+});

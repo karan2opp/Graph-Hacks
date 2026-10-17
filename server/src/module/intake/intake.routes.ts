@@ -1,4 +1,4 @@
-import { guardParams } from "../auth/index.js";
+import { aiLimit, guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { z } from "zod";
 import { validate } from "../../common/middleware/index.js";
@@ -37,7 +37,7 @@ function requireAI() {
 }
 
 /** POST /documents/:documentId/analyze  -> re-run the intake agent in the background (202); poll the document */
-intakeRouter.post("/documents/:documentId/analyze", validate({ params: z.object({ documentId: idParam }) }), async (req, res) => {
+intakeRouter.post("/documents/:documentId/analyze", aiLimit, validate({ params: z.object({ documentId: idParam }) }), async (req, res) => {
   const { documentId } = ApiRequest.from<unknown, unknown, { documentId: string }>(req).params;
   requireAI();
   await runQuery("MATCH (d:Document {id: $documentId}) SET d.analysis = 'pending', d.analysisError = null", { documentId });
@@ -46,7 +46,7 @@ intakeRouter.post("/documents/:documentId/analyze", validate({ params: z.object(
 });
 
 /** POST /transcripts/:transcriptId/analyze  -> same for a transcript */
-intakeRouter.post("/transcripts/:transcriptId/analyze", validate({ params: z.object({ transcriptId: idParam }) }), async (req, res) => {
+intakeRouter.post("/transcripts/:transcriptId/analyze", aiLimit, validate({ params: z.object({ transcriptId: idParam }) }), async (req, res) => {
   const { transcriptId } = ApiRequest.from<unknown, unknown, { transcriptId: string }>(req).params;
   requireAI();
   await runQuery("MATCH (t:Transcript {id: $transcriptId}) SET t.analysis = 'pending', t.analysisError = null", { transcriptId });
