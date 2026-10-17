@@ -1,14 +1,27 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type BrowserContext, type Page } from '@playwright/test'
 
 export const DEMO = { email: 'demo@casememory.test', password: 'casememory-demo-2026' }
 export const PASSWORD = 'correct-horse-42'
 
+/** The API allows 10 sign-ins per account per 15 minutes, so tests share one demo session. */
+let demoSession: Awaited<ReturnType<BrowserContext['cookies']>> | null = null
+
 export async function signIn(page: Page, email = DEMO.email, password = DEMO.password) {
+  const demo = email === DEMO.email
+  if (demo && demoSession) {
+    await page.context().addCookies(demoSession)
+    if ((await page.context().request.get('/api/v1/auth/me')).ok()) {
+      await page.goto('/app')
+      await expect(page).toHaveURL(/\/app$/)
+      return
+    }
+  }
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(/\/app$/)
+  if (demo) demoSession = await page.context().cookies()
 }
 
 let n = 0
