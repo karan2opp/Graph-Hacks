@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
-import { Link, Route, Routes } from 'react-router'
+import { Link, Route, Routes, useLocation } from 'react-router'
 import { CaseLayout } from './components/CaseLayout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { TopBar } from './components/TopBar'
 import { PageLoader } from './components/ui'
 import { RedirectIfSignedIn, RequireAuth } from './lib/auth'
@@ -40,7 +41,10 @@ function NotFound() {
 }
 
 export default function App() {
+  // A page that crashes shows its own error; moving to another page clears it.
+  const { pathname } = useLocation()
   return (
+    <ErrorBoundary resetKey={pathname}>
     <Routes>
       <Route
         path="/"
@@ -85,5 +89,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </ErrorBoundary>
   )
 }
