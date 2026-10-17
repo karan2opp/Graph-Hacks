@@ -93,6 +93,22 @@ Sign in at http://localhost:5173 with `demo@casememory.test` / `casememory-demo-
 | `OPENAI_REASONING_MODEL` | `gpt-5.4-mini` | Fact-check and compliance verdicts, Q&A |
 | `OPENAI_EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` | `text-embedding-3-small`, `1536` | Vectors on Chunk, Segment, Claim |
 
+## Design
+
+The UI design lives on a Claude Design canvas: **https://claude.ai/artifact/Db8dEvtVSdF3pm6uZUGvkK**
+
+It holds every screen of the app (cases, new case, brief, hearings, hearing and transcript, documents and viewer, add to memory, story drift, directions, ask, add hearing) and the landing page, laid out in the order of the user flow, plus notes on the visual language. Start any new screen from it so it reuses the same pieces:
+
+| On the canvas | In the code |
+|---|---|
+| Colours, type, wood and brass textures, ruled paper, stamps, pills, buttons | `client/src/styles/theme.css` (tokens on `:root`, classes like `.wood`, `.ruled`, `.stamp-*`, `.pill`, `.btn`) |
+| Bench header, case side menu | `client/src/components/TopBar.tsx`, `CaseLayout.tsx` |
+| Finding card (two quotes, stamp, reason, actions), source refs | `client/src/components/Findings.tsx` |
+| Fields, banners, empty and error states, skeletons | `client/src/components/ui.tsx` |
+| Landing page and the typewriter scroll story | `client/src/pages/Landing.tsx`, `client/src/pages/landing/` |
+
+Visual language: ledger-green ground, blue-black ink, mahogany bench with a brass rule; red tape for contradictions and overdue items, blue for in force or support, violet for disputes, green for complied; statuses as rubber stamps; anything quoted from the record in Courier Prime, headings in Spectral.
+
 ## Repo layout
 
 ```

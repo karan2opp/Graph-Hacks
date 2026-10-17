@@ -12,6 +12,8 @@ An agent system that gives a court case a memory, for **lawyers**. Every hearing
 
 **Scope:** Indian courts, civil and criminal. An FIR is just another document, so cases with and without police involvement share one model.
 
+**Design:** every screen and the landing page are on the Claude Design canvas at https://claude.ai/artifact/Db8dEvtVSdF3pm6uZUGvkK. New screens should start from it; the README's Design section maps its pieces to the components in `client/src`.
+
 ## 2. Tech Stack
 
 | Layer | Choice | Notes |
