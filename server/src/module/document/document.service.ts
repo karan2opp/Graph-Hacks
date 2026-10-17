@@ -181,7 +181,8 @@ export async function listDocuments(caseId: string, filter: { type?: string; hea
      OPTIONAL MATCH (d)-[:FILED_BY]->(p:Party)
      WITH d, h, p
      WHERE $hearingId IS NULL OR h.id = $hearingId
-     RETURN d {.id, .title, .type, .date, .filedOn, .orderKind, .private, .status, .pageCount, .chunkCount, .fileUrl, .createdAt} AS document,
+     RETURN d {.id, .title, .type, .date, .filedOn, .orderKind, .private, .status, .analysis, .analysisError, .note, .error, .claimCount,
+              .directionCount, .mimeType, .pageCount, .chunkCount, .fileUrl, .createdAt} AS document,
             CASE WHEN h IS NULL THEN NULL ELSE {id: h.id, date: h.date} END AS hearing,
             CASE WHEN p IS NULL THEN NULL ELSE {id: p.id, name: p.name} END AS filedBy
      ORDER BY d.date, d.createdAt`,

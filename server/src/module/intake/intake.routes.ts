@@ -1,13 +1,16 @@
+import { guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { z } from "zod";
 import { validate } from "../../common/middleware/index.js";
 import { ApiError, ApiRequest, ApiResponse, idParam } from "../../common/utils/index.js";
-import { queryOne } from "../../common/db/index.js";
+import { isAIEnabled } from "../../common/ai/index.js";
+import { runQuery } from "../../common/db/index.js";
 import { caseIdParams } from "../case/index.js";
-import { analyzeDocument, analyzeTranscript } from "./intake.jobs.js";
+import { queueDocumentAnalysis, queueTranscriptAnalysis } from "./intake.jobs.js";
 import { listClaims, listSubjects, type ClaimFilter } from "./intake.service.js";
 
 export const intakeRouter = Router();
+guardParams(intakeRouter);
 
 const claimsQuery = z.object({
   personId: idParam.optional(),
@@ -28,32 +31,25 @@ intakeRouter.get("/cases/:caseId/subjects", validate({ params: caseIdParams }), 
   ApiResponse.ok(await listSubjects(caseId)).send(res);
 });
 
-/** POST /documents/:documentId/analyze  -> re-run the intake agent (waits for the result) */
-intakeRouter.post(
-  "/documents/:documentId/analyze",
-  validate({ params: z.object({ documentId: idParam }) }),
-  async (req, res) => {
-    const { documentId } = ApiRequest.from<unknown, unknown, { documentId: string }>(req).params;
-    if (!(await queryOne("MATCH (d:Document {id: $documentId}) RETURN d.id AS id", { documentId }))) {
-      throw ApiError.notFound("Document not found");
-    }
-    await analyzeDocument(documentId);
-    const d = await queryOne("MATCH (d:Document {id: $documentId}) RETURN d {.analysis, .analysisError, .claimCount, .directionCount} AS d", { documentId });
-    ApiResponse.ok(d?.d, "Analysis finished").send(res);
-  },
-);
+/** Re-running the intake agent needs the model; without it the request is refused up front. */
+function requireAI() {
+  if (!isAIEnabled()) throw ApiError.serviceUnavailable("Reading documents needs OPENAI_API_KEY to be set");
+}
 
-/** POST /transcripts/:transcriptId/analyze */
-intakeRouter.post(
-  "/transcripts/:transcriptId/analyze",
-  validate({ params: z.object({ transcriptId: idParam }) }),
-  async (req, res) => {
-    const { transcriptId } = ApiRequest.from<unknown, unknown, { transcriptId: string }>(req).params;
-    if (!(await queryOne("MATCH (t:Transcript {id: $transcriptId}) RETURN t.id AS id", { transcriptId }))) {
-      throw ApiError.notFound("Transcript not found");
-    }
-    await analyzeTranscript(transcriptId);
-    const t = await queryOne("MATCH (t:Transcript {id: $transcriptId}) RETURN t {.analysis, .analysisError, .claimCount} AS t", { transcriptId });
-    ApiResponse.ok(t?.t, "Analysis finished").send(res);
-  },
-);
+/** POST /documents/:documentId/analyze  -> re-run the intake agent in the background (202); poll the document */
+intakeRouter.post("/documents/:documentId/analyze", validate({ params: z.object({ documentId: idParam }) }), async (req, res) => {
+  const { documentId } = ApiRequest.from<unknown, unknown, { documentId: string }>(req).params;
+  requireAI();
+  await runQuery("MATCH (d:Document {id: $documentId}) SET d.analysis = 'pending', d.analysisError = null", { documentId });
+  queueDocumentAnalysis(documentId);
+  new ApiResponse(202, "Reading again", { analysis: "pending" }).send(res);
+});
+
+/** POST /transcripts/:transcriptId/analyze  -> same for a transcript */
+intakeRouter.post("/transcripts/:transcriptId/analyze", validate({ params: z.object({ transcriptId: idParam }) }), async (req, res) => {
+  const { transcriptId } = ApiRequest.from<unknown, unknown, { transcriptId: string }>(req).params;
+  requireAI();
+  await runQuery("MATCH (t:Transcript {id: $transcriptId}) SET t.analysis = 'pending', t.analysisError = null", { transcriptId });
+  queueTranscriptAnalysis(transcriptId);
+  new ApiResponse(202, "Reading again", { analysis: "pending" }).send(res);
+});
