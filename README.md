@@ -127,7 +127,7 @@ Visual language: ledger-green ground, blue-black ink, mahogany bench with a bras
 │   │   ├── middleware/        requestId, validate (zod), error handler
 │   │   ├── db/                FalkorDB connection, runQuery / queryOne
 │   │   ├── ai/                OpenAI: embeddings, OCR, structured output
-│   │   ├── media/             ImageKit client, upload middleware, /media routes
+│   │   ├── media/             ImageKit client, upload middleware
 │   │   └── types/             Express request typing
 │   ├── module/
 │   │   ├── graph/             labels and indexes (range + vector)
@@ -262,7 +262,6 @@ Everything except `/health`, `/auth/register`, `/auth/login`, `/auth/logout` and
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | FalkorDB, ImageKit and OpenAI status |
-| POST / GET / DELETE | `/media/upload`, `/media/auth`, `/media/:fileId` | Direct ImageKit operations |
 
 ## FalkorDB
 
