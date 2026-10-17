@@ -16,6 +16,22 @@ test('landing tells the story and leads into the app', async ({ page }) => {
   await expect(page).toHaveURL(/\/login$/)
 })
 
+test('the footer leads to the privacy, cookie and terms pages', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('contentinfo').getByRole('link', { name: 'Privacy policy' }).click()
+  await expect(page).toHaveURL(/\/privacy$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Privacy policy' })).toBeVisible()
+
+  const docs = page.getByRole('navigation', { name: 'Legal documents' })
+  await docs.getByRole('link', { name: 'Cookie policy' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Cookie policy' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'cm_session' })).toBeVisible()
+
+  await docs.getByRole('link', { name: 'Terms of use' }).click()
+  await expect(page).toHaveURL(/\/terms$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeVisible()
+})
+
 test('a stamp on the order sheet can be overruled and restored', async ({ page }) => {
   await page.goto('/')
   const orders = page.locator('#orders')

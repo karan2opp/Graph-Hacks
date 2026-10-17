@@ -204,12 +204,35 @@
 .landing .footer-col a { color: #e9efe5; text-decoration: none; font-size: 15px; display: inline-flex; align-items: center; min-height: 34px; }
 .landing .footer-col a:hover { color: var(--brass-2); text-decoration: underline; }
 
+/* ---------- legal pages ---------- */
+.landing .legal { max-width: 1120px; margin: 0 auto; padding: 64px 32px 104px; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; align-items: start; }
+.landing .legal-nav { position: sticky; top: 32px; display: flex; flex-direction: column; gap: 2px; }
+.landing .legal-nav a { padding: 10px 14px; border-left: 3px solid transparent; text-decoration: none; font-size: 15px; color: var(--ink-2); }
+.landing .legal-nav a:hover { color: var(--ink); background: var(--paper-2); }
+.landing .legal-nav a[aria-current] { border-left-color: var(--red); background: var(--paper); color: var(--ink); font-weight: 600; }
+.landing .legal-doc { padding: 52px 60px 60px; max-width: 760px; }
+.landing .legal-doc h1 { font-family: var(--serif); font-size: 46px; line-height: 1.08; font-weight: 500; letter-spacing: -0.02em; }
+.landing .legal-updated { margin-top: 10px; font-size: 14px; color: var(--muted); }
+.landing .legal-summary { margin: 28px 0 8px; padding: 18px 22px; background: #fffefa; border-left: 3px solid var(--brass); font-size: 17px; line-height: 1.65; color: var(--ink); }
+.landing .legal-doc section { margin-top: 34px; }
+.landing .legal-doc h2 { font-size: 25px; font-weight: 500; margin-bottom: 10px; }
+.landing .legal-doc p, .landing .legal-doc li { font-size: 16.5px; line-height: 1.7; color: var(--ink-2); }
+.landing .legal-doc ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.landing .legal-doc b { color: var(--ink); font-weight: 600; }
+.landing .legal-table { overflow-x: auto; }
+.landing .legal-table table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 15px; line-height: 1.5; }
+.landing .legal-table th { text-align: left; font-weight: 600; color: var(--ink); padding: 10px 12px; border-bottom: 2px solid var(--ink); }
+.landing .legal-table td { padding: 12px; vertical-align: top; color: var(--ink-2); border-bottom: 1px solid var(--rule); }
 
 @media (max-width: 980px) {
   .landing .orders-grid { grid-template-columns: minmax(0, 1fr); }
   .landing .docket { position: static; }
   .landing .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .landing .footer-brand { grid-column: 1 / -1; }
+  .landing .legal { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-top: 40px; }
+  .landing .legal-nav { position: static; flex-direction: row; flex-wrap: wrap; }
+  .landing .legal-nav a { border-left: 0; border-bottom: 3px solid transparent; }
+  .landing .legal-nav a[aria-current] { border-bottom-color: var(--red); }
 }
 @media (max-width: 760px) {
   .landing .affidavit { padding: 40px 26px 36px; }
@@ -219,6 +242,8 @@
   .landing .signature { width: 180px; margin-left: 64px; }
   .landing .signature > svg:not(.seal) { width: 170px; }
   .landing .seal { left: -66px; top: -40px; width: 96px; height: 96px; }
+  .landing .legal-doc { padding: 32px 22px 40px; }
+  .landing .legal-doc h1 { font-size: 36px; }
   .landing .cause-paper { padding: 22px 18px 14px; }
   .landing .cause-row { grid-template-columns: 30px minmax(0, 1fr); row-gap: 10px; }
   .landing .cause-listed, .landing .cause-flags { grid-column: 2; }

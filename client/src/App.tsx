@@ -19,6 +19,7 @@ import { StoryDriftPage } from './pages/StoryDrift'
 
 // The landing page carries the scroll animation; keep it out of the app bundle.
 const LandingPage = lazy(() => import('./pages/Landing'))
+const LegalPage = lazy(() => import('./pages/landing/Legal'))
 
 function NotFound() {
   return (
@@ -49,6 +50,17 @@ export default function App() {
           </Suspense>
         }
       />
+      {(['privacy', 'terms', 'cookies'] as const).map((doc) => (
+        <Route
+          key={doc}
+          path={`/${doc}`}
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <LegalPage doc={doc} />
+            </Suspense>
+          }
+        />
+      ))}
       <Route path="/login" element={<RedirectIfSignedIn><LoginPage /></RedirectIfSignedIn>} />
       <Route path="/register" element={<RedirectIfSignedIn><RegisterPage /></RedirectIfSignedIn>} />
       <Route path="/invite/:token" element={<RedirectIfSignedIn><InvitePage /></RedirectIfSignedIn>} />
