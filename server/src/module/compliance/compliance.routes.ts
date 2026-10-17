@@ -1,3 +1,4 @@
+import { guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { z } from "zod";
 import { validate } from "../../common/middleware/index.js";
@@ -13,6 +14,7 @@ import {
 } from "./compliance.service.js";
 
 export const complianceRouter = Router();
+guardParams(complianceRouter);
 
 /** GET /cases/:caseId/directions?status=pending|overdue|complied|in_force|vacated */
 complianceRouter.get(

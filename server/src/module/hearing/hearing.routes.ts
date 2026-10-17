@@ -1,3 +1,4 @@
+import { guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { validate } from "../../common/middleware/index.js";
 import { ApiRequest, ApiResponse } from "../../common/utils/index.js";
@@ -12,6 +13,7 @@ import {
 import { createHearing, getHearing, listHearings, updateHearing } from "./hearing.service.js";
 
 export const hearingRouter = Router();
+guardParams(hearingRouter);
 
 /** POST /cases/:caseId/hearings */
 hearingRouter.post(

@@ -1,3 +1,4 @@
+import { guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { uploadSingle } from "../../common/media/index.js";
 import { validate } from "../../common/middleware/index.js";
@@ -13,6 +14,7 @@ import {
 import { createDocument, getDocument, listChunks, listDocuments } from "./document.service.js";
 
 export const documentRouter = Router();
+guardParams(documentRouter);
 
 /**
  * POST /cases/:caseId/documents

@@ -1,6 +1,7 @@
+import { guardParams, ownsResource } from "../auth/index.js";
 import { Router } from "express";
 import { validate } from "../../common/middleware/index.js";
-import { ApiRequest, ApiResponse } from "../../common/utils/index.js";
+import { ApiError, ApiRequest, ApiResponse } from "../../common/utils/index.js";
 import {
   addPersonBody,
   caseIdParams,
@@ -11,22 +12,18 @@ import {
   type CreateCaseInput,
   type UpdateCaseInput,
 } from "./case.schema.js";
-import { createCase, getCaseOverview, linkCases, listCases, updateCase } from "./case.service.js";
+import { createCase, getCaseOverview, linkCases, updateCase } from "./case.service.js";
 import { addPerson, listPeople } from "./person.service.js";
 
 type CaseParams = { caseId: string };
 
 export const caseRouter = Router();
+guardParams(caseRouter);
 
 /** POST /cases */
 caseRouter.post("/cases", validate({ body: createCaseBody }), async (req, res) => {
-  const created = await createCase(ApiRequest.from<CreateCaseInput>(req).body);
+  const created = await createCase(req.user!.firmId, ApiRequest.from<CreateCaseInput>(req).body);
   ApiResponse.created(created, "Case created").send(res);
-});
-
-/** GET /cases */
-caseRouter.get("/cases", async (_req, res) => {
-  ApiResponse.ok(await listCases()).send(res);
 });
 
 /** GET /cases/:caseId  -> case + linked cases + counts */
@@ -44,6 +41,7 @@ caseRouter.patch("/cases/:caseId", validate({ params: caseIdParams, body: update
 /** POST /cases/:caseId/links  { linkedCaseId, reason? } */
 caseRouter.post("/cases/:caseId/links", validate({ params: caseIdParams, body: linkCaseBody }), async (req, res) => {
   const r = ApiRequest.from<{ linkedCaseId: string; reason?: string }, unknown, CaseParams>(req);
+  if (!(await ownsResource(req.user!.firmId, "caseId", r.body.linkedCaseId))) throw ApiError.notFound("Linked case not found");
   ApiResponse.ok(await linkCases(r.params.caseId, r.body.linkedCaseId, r.body.reason), "Cases linked").send(res);
 });
 

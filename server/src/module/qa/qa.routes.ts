@@ -1,3 +1,4 @@
+import { guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { z } from "zod";
 import { validate } from "../../common/middleware/index.js";
@@ -7,6 +8,7 @@ import { askCase } from "./qa.agent.js";
 import { getConversation, listConversations } from "./qa.memory.js";
 
 export const qaRouter = Router();
+guardParams(qaRouter);
 
 const askBody = z.object({
   question: z.string().trim().min(2).max(2000),
