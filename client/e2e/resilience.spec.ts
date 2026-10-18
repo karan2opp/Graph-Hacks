@@ -19,7 +19,7 @@ test('long lists are paged, and the page lives in the URL', async ({ page }) => 
 
   await page.getByRole('button', { name: 'Next' }).click()
   await expect(page).toHaveURL(/[?&]page=2/)
-  await expect(rows).toHaveCount(4)
+  await expect(rows).toHaveCount(5)
   await expect(page.getByRole('button', { name: 'Page 2' })).toHaveAttribute('aria-current', 'page')
 
   await page.goBack()

@@ -1,11 +1,13 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
+import { api } from '../lib/api'
 import { TopBar } from '../components/TopBar'
 import { Banner, EmptyState, Pagination, QueryView, Skeleton, SkeletonList } from '../components/ui'
 import { errorMessage, inDays, longDate, plural, todayIST } from '../lib/format'
 import { useMe } from '../lib/auth'
 import { usePaged } from '../lib/paging'
-import { shortTitle, useCaseCards, useDashboard } from '../lib/queries'
+import { keys, shortTitle, useCaseCards, useDashboard } from '../lib/queries'
 import type { CaseCard } from '../types/domain'
 
 const greeting = () => {
@@ -77,6 +79,23 @@ function AttentionStrip() {
   )
 }
 
+/** Adds the synthetic demo cases (fully analysed, no AI calls) so a new firm has something to explore. */
+function useDemoCases() {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const status = useQuery({ queryKey: ['demo'], queryFn: () => api.get<{ loaded: boolean; caseId: string | null }>('/demo') })
+  const load = useMutation({
+    mutationFn: () => api.post<{ loaded: boolean; caseId: string | null }>('/demo'),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ['demo'] })
+      void qc.invalidateQueries({ queryKey: keys.cases })
+      void qc.invalidateQueries({ queryKey: keys.dashboard })
+      if (r?.caseId) navigate(`/app/cases/${r.caseId}`)
+    },
+  })
+  return { loaded: status.data?.loaded ?? true, load }
+}
+
 type Sort = 'next' | 'action' | 'recent'
 const SORTS: [Sort, string][] = [
   ['next', 'Next hearing'],
@@ -132,6 +151,12 @@ export function CasesPage() {
   const cards = useCaseCards()
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<Sort>('next')
+  const demo = useDemoCases()
+  const loadDemo = (
+    <button type="button" className="btn" onClick={() => demo.load.mutate()} disabled={demo.load.isPending}>
+      {demo.load.isPending ? 'Adding the demo cases…' : 'Try the demo cases'}
+    </button>
+  )
 
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -171,12 +196,25 @@ export function CasesPage() {
           </div>
         </div>
 
+        {demo.load.isError && <Banner tone="error">Couldn’t add the demo cases ({errorMessage(demo.load.error)}).</Banner>}
+        {cards.data && cards.data.length > 0 && !demo.loaded && (
+          <Banner action={loadDemo}>New here? Add five synthetic demo cases, with contradictions, overdue directions and a linked criminal case already found.</Banner>
+        )}
+
         {cards.data && cards.data.length > 0 && <AttentionStrip />}
 
         <QueryView query={cards} loading={<SkeletonList rows={5} />}>
           {(all) =>
             all.length === 0 ? (
-              <EmptyState title="Start your first case" action={<Link to="/app/cases/new" className="btn btn-primary">Create a case</Link>}>
+              <EmptyState
+                title="Start your first case"
+                action={
+                  <span className="row" style={{ justifyContent: 'center' }}>
+                    <Link to="/app/cases/new" className="btn btn-primary">Create a case</Link>
+                    {loadDemo}
+                  </span>
+                }
+              >
                 Add the parties and the first hearing, then drop in the plaint, orders and transcripts. The agents will read them and keep the memory up to date.
               </EmptyState>
             ) : (

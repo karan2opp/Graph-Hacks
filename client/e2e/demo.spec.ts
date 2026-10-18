@@ -5,7 +5,7 @@ test('home shows the firm cases and what needs attention', async ({ page }) => {
   await signIn(page)
   await expect(page.getByRole('heading', { name: /Here is what your cases remember/ })).toBeVisible()
   await expect(page.getByText('Overdue directions')).toBeVisible()
-  await expect(page.locator('li .case-row')).toHaveCount(4)
+  await expect(page.locator('li .case-row')).toHaveCount(5)
   await page.getByPlaceholder('Search by party, case no., court').fill('Patel')
   await expect(page.locator('li .case-row')).toHaveCount(1)
 })

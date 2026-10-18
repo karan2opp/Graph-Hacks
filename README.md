@@ -71,6 +71,8 @@ npm run dev:client                      # http://localhost:5173
 
 Sign in at http://localhost:5173 with `demo@casememory.test` / `casememory-demo-2026` (or `SEED_PASSWORD`), or create your own firm. The seed writes the agents' results straight into the graph, so every screen works before an OpenAI key is set; new uploads are read by the agents once it is.
 
+Any firm can add the same demo cases from the app: on the case list, **Try the demo cases** (`POST /api/v1/demo`). It adds five synthetic cases, fully analysed, with no OpenAI calls: Kumar v. Gupta (contradictions, overdue directions, a lawyer override), its counter-suit, a consumer complaint with unpaid costs, a commercial case, and a linked criminal case, State v. Suresh Gupta, where a prosecution witness contradicts the FIR. Loading twice changes nothing, and other firms never see them. `demo-data/` has extra synthetic files (PDFs, a photo of an order, transcripts) to try uploading yourself.
+
 ### Accounts and access
 
 - **Firms.** Signing up creates a firm and makes you its owner. Owners invite colleagues by email from *Firm and settings*; an invite link works once, for 7 days, and only for that email address. Owners can remove members, which also ends their sessions.
@@ -276,7 +278,7 @@ Everything except `/health`, `/auth/register`, `/auth/login`, `/auth/logout` and
 |---|---|
 | `npm run db:up` / `db:down` / `db:logs` | Manage the FalkorDB container |
 | `npm run dev:server` / `dev:client` | Dev servers with reload |
-| `npm run seed` | Reset and load the demo firm (`demo@casememory.test`) and its four cases |
+| `npm run seed` | Reset and load the demo firm (`demo@casememory.test`) and its five cases |
 | `npm run build` | Build server and client |
 | `npm run typecheck` / `lint` | Typecheck server and client / lint the client |
 | `npm test` | API tests (`node:test`) against a throwaway graph `court_memory_test` |
