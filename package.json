@@ -6,7 +6,7 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "dev": "node scripts/dev.mjs",
-    "install:all": "npm --prefix server install && npm --prefix client install",
+    "install:all": "cd server && npm install && cd ../client && npm install",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f falkordb",

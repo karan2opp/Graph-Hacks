@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const step = (n, text) => console.log(`\n\x1b[1m[${n}/4] ${text}\x1b[0m`);
-const run = (cmd, label) => {
-  const r = spawnSync(cmd, { cwd: root, stdio: "inherit", shell: true, env: process.env });
+const run = (cmd, label, cwd = root) => {
+  const r = spawnSync(cmd, { cwd, stdio: "inherit", shell: true, env: process.env });
   if (r.status !== 0) {
     console.error(`\n\x1b[31m${label} failed.\x1b[0m`);
     process.exit(r.status ?? 1);
@@ -26,7 +26,9 @@ if (spawnSync("docker info", { shell: true, stdio: "ignore" }).status !== 0) {
 }
 
 step(1, "Installing dependencies (server and client)");
-run("npm --prefix server install && npm --prefix client install", "Install");
+// install inside each folder: `npm --prefix <dir> install` run from here adds the root package as a dependency
+run("npm install", "Installing the server", join(root, "server"));
+run("npm install", "Installing the client", join(root, "client"));
 
 step(2, "Creating .env files");
 for (const dir of ["server", "client"]) {
