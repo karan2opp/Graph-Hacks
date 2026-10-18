@@ -34,6 +34,56 @@ The graph is the agents' shared memory and how they hand work to each other: int
 
 Every reference resolves to a real node in the graph, and the response includes the tools the agent used and the evidence subgraph behind the answer.
 
+## The graph
+
+Everything the agents know lives in one FalkorDB graph. The full model, with every property, is in section 4 of [plan.md](plan.md).
+
+```mermaid
+graph LR
+  Party -- "PARTY_IN {role}" --> Case
+  Lawyer -- "REPRESENTS {from, to}" --> Party
+  Witness -- CALLED_BY --> Party
+  Case -- LINKED_TO --> Case
+  Case -- HAS_HEARING --> Hearing
+  Hearing -- NEXT --> Hearing
+  Hearing -- PRESIDED_BY --> Judge
+  Hearing -- RECORDED_IN --> Transcript
+  Transcript -- HAS_SEGMENT --> Segment
+  Segment -- SPOKEN_BY --> Lawyer
+  Document -- BELONGS_TO --> Case
+  Document -- SUBMITTED_IN --> Hearing
+  Document -- FILED_BY --> Party
+  Document -- HAS_CHUNK --> Chunk
+  Chunk -- CONTAINS --> Claim
+  Segment -- CONTAINS --> Claim
+  Claim -- MADE_BY --> Party
+  Claim -- ABOUT --> Subject
+  Claim -- "CONTRADICTS / DISPUTES / SUPPORTS" --> Claim
+  Order["Document (order)"] -- GIVES --> Direction
+  Direction -- TO --> Party
+  Direction -- "COMPLIED_BY {onTime, daysLate}" --> Document
+  Case -- HAS_CONVERSATION --> Conversation
+  Conversation -- HAS_MESSAGE --> Message
+  Message -- CITES --> Claim
+```
+
+`Party`, `Lawyer`, `Judge` and `Witness` all carry a shared `Person` label, so `MADE_BY`, `SPOKEN_BY` and `APPEARED_IN` can point at any of them. `Chunk`, `Segment` and `Claim` also hold their **embedding** (vector index on the same node), so a meaning search lands on a node and the agent keeps walking from there.
+
+### How the graph does the work
+
+These are the traversals the agents actually run:
+
+| Question | Graph walk |
+|---|---|
+| Has this person said something different before? | `(new:Claim)-[:MADE_BY]->(p)<-[:MADE_BY]-(old:Claim)`, plus claims on the same `(:Subject)` |
+| Is this a contradiction or just the dispute? | Each claim's side: `(Claim)-[:MADE_BY]->(Lawyer)-[:REPRESENTS]->(Party)-[:PARTY_IN {role}]->(Case)`, or `-[:CALLED_BY]->` for witnesses. Same person or side → `CONTRADICTS`; opposite sides → `DISPUTES` |
+| Did anyone comply with this order? | `(Direction)-[:TO]->(Party)<-[:FILED_BY]-(Document)` for filings after the order, then `COMPLIED_BY` |
+| Where exactly was this said? | `(Chunk)-[:CONTAINS]->(Claim)` → document page and paragraph, or `(Segment)-[:CONTAINS]->(Claim)` → hearing date and turn |
+| What happened at the last hearings? | `(Case)-[:HAS_HEARING]->(Hearing)-[:NEXT]->(Hearing)…` |
+| What did the assistant already tell me? | `(Conversation)-[:HAS_MESSAGE]->(Message)-[:CITES]->(Claim)` |
+
+Without the graph, none of these is a lookup: "who said it", "whose side" and "which order" would each be a separate search over documents. With it, each is one walk, and every answer can show the path it took.
+
 ## Stack
 
 | Layer | Choice |
@@ -49,9 +99,33 @@ Every reference resolves to a real node in the graph, and the response includes 
 | Embeddings | OpenAI `text-embedding-3-small` (1536 dims) |
 | PDF text | `unpdf` |
 
-## Getting started
+## Quick start
 
-Requirements: Node 20+, Docker Desktop, an OpenAI API key. ImageKit is optional in development (without it, text is kept but original files are not stored).
+Requirements: **Node 20+** and **Docker Desktop** (running). An **OpenAI API key** is needed to ask questions and to read new uploads; without it the demo cases still open and every screen works.
+
+```bash
+git clone https://github.com/karan2opp/Graph-Hacks.git
+cd Graph-Hacks
+
+npm run setup    # installs everything, creates the .env files, starts FalkorDB in Docker, loads the demo data
+                 # then put your key in server/.env:  OPENAI_API_KEY=sk-...
+npm run dev      # API on http://localhost:5000, web app on http://localhost:5173
+```
+
+Open **http://localhost:5173** and click **Use the demo account** on the sign-in page (or sign in with `demo@casememory.test` / `casememory-demo-2026`). You can also create your own account: every new firm starts with the five demo cases.
+
+`npm run setup` is safe to run again: it keeps existing `.env` files and resets only the demo account. It waits for FalkorDB to be ready before loading the data.
+
+**Things to try** in *Ramesh Kumar v. Suresh Gupta*:
+- **Story drift:** the defendant's 2021 written statement says he never received Rs. 5,00,000; his 2023 affidavit says he did, as a loan.
+- **Directions:** what the court ordered, what was complied late, what is overdue; set your own call with a note.
+- **Ask the case:** `Has Suresh Gupta contradicted himself?`, `Which directions are overdue?`, `Is there a criminal case linked to this one?`, then open *Evidence graph* and *How I found this*.
+- **The graph itself:** open the FalkorDB Browser at http://localhost:3000 (host `localhost`, port `6379`, no username or password), pick the graph `court_memory` and run `MATCH p=(c:Claim)-[:MADE_BY|ABOUT|CONTRADICTS]->(n) RETURN p LIMIT 120`.
+- **Upload your own:** `demo-data/` has synthetic PDFs, a photo of an order and transcripts for a second case, with step-by-step instructions in [demo-data/00-START-HERE.md](demo-data/00-START-HERE.md).
+
+### Manual setup
+
+The same steps one by one:
 
 ```bash
 npm run install:all
@@ -277,8 +351,10 @@ Everything except `/health`, `/auth/register`, `/auth/login`, `/auth/logout` and
 
 | Command | What it does |
 |---|---|
+| `npm run setup` | One-time setup: install, create `.env` files, start FalkorDB, wait for it, load the demo data |
+| `npm run dev` | API and web app together (Ctrl+C stops both) |
 | `npm run db:up` / `db:down` / `db:logs` | Manage the FalkorDB container |
-| `npm run dev:server` / `dev:client` | Dev servers with reload |
+| `npm run dev:server` / `dev:client` | Each dev server on its own, with reload |
 | `npm run seed` | Reset and load the demo firm (`demo@casememory.test`) and its five cases |
 | `npm run build` | Build server and client |
 | `npm run typecheck` / `lint` | Typecheck server and client / lint the client |
@@ -287,3 +363,7 @@ Everything except `/health`, `/auth/register`, `/auth/login`, `/auth/logout` and
 | `npm run check` | All of the above, in order |
 
 Tests need FalkorDB running (`npm run db:up`) and never call OpenAI or ImageKit. First Playwright run: `npx --prefix client playwright install chromium`.
+
+## Demo video
+
+`video/` builds the submission video from the running app: Playwright records the FalkorDB Browser and the app scene by scene, OpenAI text-to-speech reads the script, and [Remotion](https://www.remotion.dev) adds the intro, captions and outro. See [video/README.md](video/README.md).
