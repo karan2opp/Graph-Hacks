@@ -4,6 +4,7 @@
  */
 process.env.FALKORDB_GRAPH = process.env.E2E_GRAPH || "court_memory_e2e";
 process.env.OPENAI_API_KEY = "";
+process.env.DEMO_ON_SIGNUP = "false"; // tests start from an empty firm
 process.env.IMAGEKIT_PRIVATE_KEY = "";
 process.env.IMAGEKIT_PUBLIC_KEY = "";
 

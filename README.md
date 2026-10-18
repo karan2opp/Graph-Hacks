@@ -71,7 +71,7 @@ npm run dev:client                      # http://localhost:5173
 
 Sign in at http://localhost:5173 with `demo@casememory.test` / `casememory-demo-2026` (or `SEED_PASSWORD`), or create your own firm. The seed writes the agents' results straight into the graph, so every screen works before an OpenAI key is set; new uploads are read by the agents once it is.
 
-Any firm can add the same demo cases from the app: on the case list, **Try the demo cases** (`POST /api/v1/demo`). It adds five synthetic cases, fully analysed, with no OpenAI calls: Kumar v. Gupta (contradictions, overdue directions, a lawyer override), its counter-suit, a consumer complaint with unpaid costs, a commercial case, and a linked criminal case, State v. Suresh Gupta, where a prosecution witness contradicts the FIR. Loading twice changes nothing, and other firms never see them. `demo-data/` has extra synthetic files (PDFs, a photo of an order, transcripts) to try uploading yourself.
+**Every new firm starts with the demo cases** (set `DEMO_ON_SIGNUP=false` to turn this off), and any firm can add them later from the case list with **Try the demo cases** (`POST /api/v1/demo`). They are five synthetic cases, already analysed (the agents are not run; with an OpenAI key the text is embedded in the background so questions about them work): Kumar v. Gupta (contradictions, overdue directions, a lawyer override), its counter-suit, a consumer complaint with unpaid costs, a commercial case, and a linked criminal case, State v. Suresh Gupta, where a prosecution witness contradicts the FIR. Loading twice changes nothing, and other firms never see them. `demo-data/` has extra synthetic files (PDFs, a photo of an order, transcripts) to try uploading yourself.
 
 ### Accounts and access
 
@@ -86,6 +86,7 @@ Any firm can add the same demo cases from the app: on the case list, **Try the d
 |---|---|---|
 | `PORT`, `CLIENT_URL` | `5000`, `http://localhost:5173` | API port, allowed CORS origin(s) |
 | `SESSION_TTL_DAYS`, `COOKIE_SAMESITE` | `14`, `lax` | How long a sign-in lasts; `none` when client and API are on different sites (HTTPS only) |
+| `DEMO_ON_SIGNUP` | `true` | New firms get the five demo cases at sign-up |
 | `SEED_PASSWORD` | `casememory-demo-2026` | Password of the demo account created by `npm run seed` |
 | `FALKORDB_HOST`, `FALKORDB_PORT`, `FALKORDB_GRAPH` | `localhost`, `6379`, `court_memory` | FalkorDB connection and graph name |
 | `FALKORDB_USERNAME`, `FALKORDB_PASSWORD` | empty | For a hosted FalkorDB |

@@ -8,11 +8,13 @@
  */
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { embedTexts, isAIEnabled } from "../common/ai/index.js";
 import { nowIso, queryOne, runQuery } from "../common/db/index.js";
 import { register } from "../module/auth/index.js";
 import { addPerson, addPersonBody, createCase, createCaseBody, linkCases } from "../module/case/index.js";
 import { createDocument, createDocumentBody } from "../module/document/index.js";
 import { createHearing, createHearingBody } from "../module/hearing/index.js";
+import { enqueue } from "../module/ingestion/index.js";
 import { createTranscript } from "../module/transcript/index.js";
 
 export const DEMO_EMAIL = "demo@casememory.test";
@@ -651,8 +653,29 @@ async function stateVGupta(firmId: string, kumarCaseId: string): Promise<string>
 }
 
 /**
+ * Embeds the demo text (document passages, transcript turns, claims) so the Q&A agent can search it
+ * by meaning. Only vectors are written; statuses stay as the seed set them.
+ */
+export async function embedDemoCases(caseIds: string[]) {
+  for (const label of ["Chunk", "Segment", "Claim"] as const) {
+    const rows = await runQuery<{ id: string; text: string }>(
+      `MATCH (n:${label}) WHERE n.caseId IN $ids AND n.embedding IS NULL RETURN n.id AS id, n.text AS text`,
+      { ids: caseIds },
+    );
+    for (let i = 0; i < rows.length; i += 64) {
+      const batch = rows.slice(i, i + 64);
+      const vectors = await embedTexts(batch.map((r) => r.text.slice(0, 6000)));
+      await runQuery(`UNWIND $rows AS row MATCH (n:${label} {id: row.id}) SET n.embedding = vecf32(row.vec)`, {
+        rows: batch.map((r, j) => ({ id: r.id, vec: vectors[j]! })),
+      });
+    }
+  }
+}
+
+/**
  * Adds the demo cases to a firm: the same data as `npm run seed`, but into an existing firm. Nothing
- * is queued for the agents (their results are written directly), so no OpenAI calls are made.
+ * is queued for the agents (their results are written directly). With an OpenAI key the text is
+ * embedded in the background so questions work; that is the only AI call.
  * Does nothing if the firm already has them; removes what it created if something goes wrong.
  */
 export async function loadDemoCases(firmId: string): Promise<{ loaded: boolean; caseId: string | null }> {
@@ -667,6 +690,10 @@ export async function loadDemoCases(firmId: string): Promise<{ loaded: boolean; 
     created.push(await stateVGupta(firmId, kumar.caseId));
     await fillKumarAgentResults(kumar);
     await runQuery("MATCH (c:Case) WHERE c.id IN $ids SET c.demo = true", { ids: created });
+    // Questions need the text searchable. Done in the background, so loading stays instant.
+    if (isAIEnabled()) {
+      enqueue(`embed:demo:${firmId}`, async () => embedDemoCases(created));
+    }
     return { loaded: true, caseId: kumar.caseId };
   } catch (e) {
     await deleteCases(created);

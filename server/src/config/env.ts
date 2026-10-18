@@ -14,6 +14,8 @@ const schema = z.object({
   CLIENT_URL: str("http://localhost:5173"),
   SESSION_TTL_DAYS: num(14),
   // "none" when the client and API live on different sites (needs HTTPS).
+  // New firms start with the demo cases so there is something to explore and ask about.
+  DEMO_ON_SIGNUP: z.preprocess(emptyToUndefined, z.enum(["true", "false"]).default("true").transform((v) => v === "true")),
   COOKIE_SAMESITE: z.preprocess(emptyToUndefined, z.enum(["lax", "strict", "none"]).default("lax")),
 
   FALKORDB_HOST: str("localhost"),

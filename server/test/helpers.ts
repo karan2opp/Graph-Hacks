@@ -3,6 +3,7 @@ process.env.NODE_ENV = "test";
 process.env.FALKORDB_GRAPH = "court_memory_test";
 // Agents and file storage stay off in tests: empty means "not configured", and dotenv won't override it.
 process.env.OPENAI_API_KEY = "";
+process.env.DEMO_ON_SIGNUP = "false"; // tests start from an empty firm
 process.env.IMAGEKIT_PRIVATE_KEY = "";
 process.env.IMAGEKIT_PUBLIC_KEY = "";
 

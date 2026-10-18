@@ -18,7 +18,8 @@ demoRouter.get("/demo", async (req, res) => {
 
 /**
  * POST /demo  -> add the demo cases (synthetic data, fully analysed) to the firm.
- * No agent or OpenAI calls are made, so it is instant and free.
+ * The agents are not run (their results are included); with an OpenAI key the text is embedded in the
+ * background so questions about it work.
  */
 demoRouter.post(
   "/demo",

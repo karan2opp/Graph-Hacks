@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { env } from "../../config/env.js";
 import { validate } from "../../common/middleware/index.js";
 import { ApiRequest, ApiResponse } from "../../common/utils/index.js";
 import {
@@ -41,7 +42,17 @@ publicAuthRouter.post(
   rateLimit({ windowMs: 60 * 60_000, max: 10, key: (req) => `register:${req.ip}` }),
   validate({ body: registerBody }),
   async (req, res) => {
-    const user = await register(ApiRequest.from<RegisterInput>(req).body);
+    const body = ApiRequest.from<RegisterInput>(req).body;
+    const user = await register(body);
+    // A brand-new firm gets the demo cases (not someone joining an existing firm by invite).
+    if (env.DEMO_ON_SIGNUP && "firmName" in body) {
+      try {
+        const { loadDemoCases } = await import("../../scripts/seed.js");
+        await loadDemoCases(user.firmId);
+      } catch (e) {
+        console.error("[demo] could not add the demo cases:", (e as Error).message);
+      }
+    }
     const session = await createSession(user.id);
     setSessionCookie(res, session.token, session.expiresAt);
     ApiResponse.created(user, "Account created").send(res);
