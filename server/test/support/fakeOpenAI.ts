@@ -161,9 +161,6 @@ const facts = (s: string) =>
 const nature = (s: string) => (/loan/i.test(s) ? "loan" : /\bsale\b/i.test(s) ? "sale" : null);
 
 function factCheck(prompt: string) {
-  console.log("FACTCHECK PROMPT>>>
-" + prompt + "
-<<<");
   const pairs = [...prompt.matchAll(/^\[(R\d+)\][^\n]*\n\s*A \(.*?\): ([^\n]*)\n[^\n]*\n\s*B \(.*?\): ([^\n]*)$/gm)];
   return {
     verdicts: pairs.map(([, pair, a, b]) => {
