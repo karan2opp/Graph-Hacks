@@ -1,0 +1,12 @@
+{
+  "voice": "ash",
+  "instructions": "Calm, confident and clear, like a founder walking a colleague through a product demo. Moderate pace, natural pauses between sentences.",
+  "scenes": [
+    { "id": "intro", "text": "Court cases run for years, across dozens of hearings. Directions get forgotten, lawyers change, and a witness can change their story without anyone noticing. Case Memory gives every case a memory, built on a FalkorDB graph." },
+    { "id": "graph", "text": "Everything lives in FalkorDB as a graph. Claims, people, documents and court directions are nodes. Who said what, and where, are the edges. Four agents share this one graph: intake, fact-check, compliance, and question answering." },
+    { "id": "drift", "text": "Story drift shows where someone's account changed. In 2021 the defendant said he never received the money. In 2023, his own affidavit says he did, as a loan. The fact-check agent found this on its own, and cites both paragraphs." },
+    { "id": "directions", "text": "Directions turns the court's orders into a checklist. The compliance agent links each one to the filing that satisfied it, and flags what is overdue. A lawyer can override it with a note, and the agents never undo that." },
+    { "id": "ask", "text": "Now we ask the case a question. Every sentence ends with a citation that resolves to a real node in the graph. The evidence graph shows the path behind the answer, and the trace lists every graph query the agent ran. Conversations are stored back in FalkorDB, so the memory carries across sessions." },
+    { "id": "outro", "text": "Case Memory. One graph, four agents, and every answer traceable to its source. All data shown is synthetic. The code is on GitHub." }
+  ]
+}

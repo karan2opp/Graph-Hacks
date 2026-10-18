@@ -1,0 +1,18 @@
+{
+  "graph": {
+    "start": 6.48,
+    "end": 27.33
+  },
+  "drift": {
+    "start": 29.76,
+    "end": 49.13
+  },
+  "directions": {
+    "start": 50.01,
+    "end": 66.22
+  },
+  "ask": {
+    "start": 67.05,
+    "end": 89.05
+  }
+}
