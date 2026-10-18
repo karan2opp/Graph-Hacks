@@ -13,11 +13,17 @@ import { register } from "../module/auth/index.js";
 import { addPerson, addPersonBody, createCase, createCaseBody, linkCases } from "../module/case/index.js";
 import { createDocument, createDocumentBody } from "../module/document/index.js";
 import { createHearing, createHearingBody } from "../module/hearing/index.js";
-import { whenIdle } from "../module/ingestion/index.js";
 import { createTranscript } from "../module/transcript/index.js";
 
 export const DEMO_EMAIL = "demo@casememory.test";
 export const DEMO_PASSWORD = process.env.SEED_PASSWORD || "casememory-demo-2026";
+
+/** Removes cases and everything under them (people, hearings, documents, claims, conversations...). */
+async function deleteCases(ids: string[]) {
+  await runQuery("MATCH (c:Conversation)-[:HAS_MESSAGE]->(m:Message) WHERE c.caseId IN $ids DETACH DELETE m", { ids });
+  await runQuery("MATCH (n) WHERE n.caseId IN $ids DETACH DELETE n", { ids });
+  await runQuery("MATCH (c:Case) WHERE c.id IN $ids DETACH DELETE c", { ids });
+}
 
 /** Removes the demo firm, its users and everything under its cases. */
 async function wipeDemo() {
@@ -27,10 +33,7 @@ async function wipeDemo() {
   );
   if (!firm) return;
   const cases = await runQuery<{ id: string }>("MATCH (c:Case {firmId: $firmId}) RETURN c.id AS id", firm);
-  const ids = cases.map((c) => c.id);
-  await runQuery("MATCH (c:Conversation)-[:HAS_MESSAGE]->(m:Message) WHERE c.caseId IN $ids DETACH DELETE m", { ids });
-  await runQuery("MATCH (n) WHERE n.caseId IN $ids DETACH DELETE n", { ids });
-  await runQuery("MATCH (c:Case) WHERE c.id IN $ids DETACH DELETE c", { ids });
+  await deleteCases(cases.map((c) => c.id));
   await runQuery(
     `MATCH (u:User)-[:MEMBER_OF]->(f:Firm {id: $firmId})
      OPTIONAL MATCH (s:Session {userId: u.id}) DETACH DELETE s`,
@@ -47,7 +50,7 @@ async function doc(
   caseId: string,
   input: { title: string; type: string; text: string; date?: string; filedOn?: string; hearingId?: string; filedById?: string; orderKind?: string },
 ) {
-  const { document } = await createDocument(caseId, createDocumentBody.parse(input));
+  const { document } = await createDocument(caseId, createDocumentBody.parse(input), undefined, { background: false });
   return document.id;
 }
 
@@ -395,7 +398,7 @@ async function kumarVGupta(firmId: string) {
       "PW1: I asked him many times in 2019. He returned Rs. 2,00,000 in December 2019.",
       "Court: Cross concluded. List for defendant evidence.",
     ].join("\n"),
-  });
+  }, { background: false });
   const transcriptId = (transcript as { id: string }).id;
 
   return { caseId, ramesh, suresh, anil, judge, docs: { plaint, order1, ws, order2, affPw2, order3, affDw1, expert, order4, order5, passbook, note }, transcriptId, hearings: { h2, h3, h4, h5, h6, h7, h8, h9 } };
@@ -506,7 +509,7 @@ async function fillKumarAgentResults(k: Awaited<ReturnType<typeof kumarVGupta>>)
   );
 }
 
-async function otherCases(firmId: string, kumarCaseId: string) {
+async function otherCases(firmId: string, kumarCaseId: string): Promise<string[]> {
   // Counter-suit, linked to the main case.
   const g = await createCase(firmId, createCaseBody.parse({ caseNumber: "CS 98/2022", title: "Suresh Gupta v. Ramesh Kumar", court: "Civil Judge (Senior Division)", caseType: "civil", stage: "Evidence", filedOn: "2022-02-14" }));
   await person(g.id, { kind: "party", name: "Suresh Gupta", role: "plaintiff" });
@@ -542,17 +545,141 @@ async function otherCases(firmId: string, kumarCaseId: string) {
       { id },
     );
   }
+  return [g.id, iyer.id, patel.id];
+}
+
+/**
+ * A criminal case linked to Kumar v. Gupta: the FIR for the same payment, and a prosecution witness
+ * whose deposition does not match it (the "witness against the FIR" finding).
+ */
+async function stateVGupta(firmId: string, kumarCaseId: string): Promise<string> {
+  const kase = await createCase(firmId, createCaseBody.parse({
+    caseNumber: "FIR 214/2021 / SC 310/2022",
+    title: "State v. Suresh Gupta",
+    court: "Additional Sessions Judge, Tis Hazari",
+    caseType: "criminal",
+    stage: "Prosecution evidence",
+    filedOn: "2021-09-03",
+  }));
+  const caseId = kase.id;
+  const ramesh = await person(caseId, { kind: "party", name: "Ramesh Kumar", role: "complainant" });
+  const suresh = await person(caseId, { kind: "party", name: "Suresh Gupta", role: "accused" });
+  await person(caseId, { kind: "lawyer", name: "Adv. Mohit Chawla", representsId: suresh.id });
+  const judge = await person(caseId, { kind: "judge", name: "Mr. Arvind Saxena" });
+  const anil = await person(caseId, { kind: "witness", name: "Anil Sharma", code: "PW2", witnessType: "eye", calledById: ramesh.id });
+  void judge;
+
+  const h1 = await hearing(caseId, { date: "2021-10-05", purpose: "Cognizance" });
+  const h2 = await hearing(caseId, { date: "2023-04-18", purpose: "Prosecution evidence", appearances: [{ personId: anil.id, present: true }] });
+  await hearing(caseId, { date: "2026-11-18", purpose: "Prosecution evidence" });
+  void h1;
+
+  const fir = await doc(caseId, {
+    title: "FIR No. 214/2021",
+    type: "fir",
+    date: "2021-09-03",
+    filedById: ramesh.id,
+    text: para(
+      "FIRST INFORMATION REPORT\nFIR No. 214/2021, PS Karol Bagh. Sections 406, 420 IPC.",
+      "1. That the complainant Ramesh Kumar paid Rs. 5,00,000 in cash to Suresh Gupta on 12.03.2019 at the accused's shop in Karol Bagh, in the presence of Anil Sharma.",
+      "2. That the accused signed a promissory note for Rs. 5,00,000 the same day and has since refused to repay the amount.",
+      "3. That the accused has thereby cheated the complainant and committed criminal breach of trust.",
+    ),
+  });
+  const dep = await doc(caseId, {
+    title: "Deposition of PW2 Anil Sharma",
+    type: "deposition",
+    date: "2023-04-18",
+    filedOn: "2023-04-18",
+    hearingId: h2,
+    text: para(
+      "DEPOSITION OF PW2 ANIL SHARMA\nExamination in chief, 18.04.2023.",
+      "1. I know the complainant Ramesh Kumar and the accused Suresh Gupta.",
+      "2. I was present at the accused's shop on 20.03.2019 when Ramesh Kumar handed over Rs. 5,00,000 in cash to Suresh Gupta.",
+      "3. I did not see Suresh Gupta sign any document at the shop.",
+    ),
+  });
+  const order = await doc(caseId, {
+    title: "Order dated 18.04.2023",
+    type: "order",
+    orderKind: "procedural",
+    hearingId: h2,
+    text: para(
+      "ORDER\nSC 310/2022, 18.04.2023",
+      "1. PW2 Anil Sharma examined in chief. Cross-examination deferred.",
+      "2. The prosecution shall produce the original promissory note on or before the next date of hearing.",
+      "3. List on 18.11.2026 for prosecution evidence.",
+    ),
+  });
+
+  const pay = await subject(caseId, "Payment of Rs. 5,00,000", "payment");
+  const note = await subject(caseId, "Promissory note", "document");
+  const fromDoc = async (documentId: string, label: string, statedOn: string, hearingId: string | null) => ({
+    from: { label: "Chunk" as const, id: await chunkId(documentId, label) },
+    sourceType: "document" as const,
+    sourceId: documentId,
+    hearingId,
+    statedOn,
+    caseId,
+  });
+  const f1 = await claim({ ...(await fromDoc(fir, "1", "2021-09-03", null)), text: "Ramesh Kumar paid Rs. 5,00,000 in cash to Suresh Gupta on 12.03.2019 at his shop, in the presence of Anil Sharma.", quote: "paid Rs. 5,00,000 in cash to Suresh Gupta on 12.03.2019", kind: "allegation", madeBy: ramesh, subjects: [pay] });
+  const f2 = await claim({ ...(await fromDoc(fir, "2", "2021-09-03", null)), text: "Suresh Gupta signed a promissory note for Rs. 5,00,000 on the same day and has refused to repay it.", quote: "signed a promissory note for Rs. 5,00,000 the same day", kind: "allegation", madeBy: ramesh, subjects: [note, pay] });
+  const d2 = await claim({ ...(await fromDoc(dep, "2", "2023-04-18", h2)), text: "Anil Sharma saw Ramesh Kumar hand over Rs. 5,00,000 in cash to Suresh Gupta at the shop on 20.03.2019.", quote: "on 20.03.2019 when Ramesh Kumar handed over Rs. 5,00,000 in cash", kind: "fact", madeBy: anil, onBehalfOf: ramesh, subjects: [pay] });
+  const d3 = await claim({ ...(await fromDoc(dep, "3", "2023-04-18", h2)), text: "Anil Sharma did not see Suresh Gupta sign any document at the shop.", quote: "I did not see Suresh Gupta sign any document", kind: "fact", madeBy: anil, onBehalfOf: ramesh, subjects: [note] });
+  await link("CONTRADICTS", d2, f1, { category: "record", severity: "high", fact: "Date of the payment", reason: "The FIR says the cash was paid on 12.03.2019, but PW2 places it on 20.03.2019.", createdAt: "2023-04-18T10:00:00.000Z" });
+  await link("CONTRADICTS", d3, f2, { category: "record", severity: "medium", fact: "Whether a document was signed", reason: "The FIR says a promissory note was signed that day; PW2 saw no document signed.", createdAt: "2023-04-18T10:00:01.000Z" });
+
+  await direction({
+    caseId, orderId: order, paraLabel: "2", hearingId: h2, orderDate: "2023-04-18",
+    text: "Prosecution to produce the original promissory note on or before the next date of hearing.",
+    kind: "direction", dueDate: "2026-11-18", dueText: "before the next date", to: [ramesh],
+  });
+  await runQuery("MATCH (o:Document {id: $id}) SET o.summary = $summary, o.nextDate = '2026-11-18'", {
+    id: order,
+    summary: "PW2 examined in chief; the prosecution is to produce the original promissory note before the next date.",
+  });
+  await runQuery(
+    `MATCH (d:Document {caseId: $caseId})
+     OPTIONAL MATCH (d)-[:HAS_CHUNK]->(:Chunk)-[:CONTAINS]->(c:Claim)
+     WITH d, count(c) AS claims
+     SET d.status = 'ready', d.analysis = 'done', d.note = null, d.analysisError = null, d.claimCount = claims,
+         d.analyzedAt = coalesce(d.filedOn, d.date)`,
+    { caseId },
+  );
+  await linkCases(kumarCaseId, caseId, "FIR for cheating over the same Rs. 5,00,000 payment");
+  return caseId;
+}
+
+/**
+ * Adds the demo cases to a firm: the same data as `npm run seed`, but into an existing firm. Nothing
+ * is queued for the agents (their results are written directly), so no OpenAI calls are made.
+ * Does nothing if the firm already has them; removes what it created if something goes wrong.
+ */
+export async function loadDemoCases(firmId: string): Promise<{ loaded: boolean; caseId: string | null }> {
+  const existing = await queryOne<{ id: string }>("MATCH (c:Case {firmId: $firmId, demo: true}) RETURN c.id AS id LIMIT 1", { firmId });
+  if (existing) return { loaded: false, caseId: existing.id };
+
+  const created: string[] = [];
+  try {
+    const kumar = await kumarVGupta(firmId);
+    created.push(kumar.caseId);
+    created.push(...(await otherCases(firmId, kumar.caseId)));
+    created.push(await stateVGupta(firmId, kumar.caseId));
+    await fillKumarAgentResults(kumar);
+    await runQuery("MATCH (c:Case) WHERE c.id IN $ids SET c.demo = true", { ids: created });
+    return { loaded: true, caseId: kumar.caseId };
+  } catch (e) {
+    await deleteCases(created);
+    throw e;
+  }
 }
 
 /** Builds the demo firm. Expects FalkorDB to be connected and the schema initialised. */
 export async function seed() {
   await wipeDemo();
   const user = await register({ name: "Kavita Rao", email: DEMO_EMAIL, password: DEMO_PASSWORD, firmName: "Rao & Associates" });
-  const kumar = await kumarVGupta(user.firmId);
-  await otherCases(user.firmId, kumar.caseId);
-  await whenIdle(); // let the queued jobs note "waiting for OPENAI_API_KEY" before we fill in their results
-  await fillKumarAgentResults(kumar);
-  return { email: DEMO_EMAIL, password: DEMO_PASSWORD, firmId: user.firmId, caseId: kumar.caseId };
+  const { caseId } = await loadDemoCases(user.firmId);
+  return { email: DEMO_EMAIL, password: DEMO_PASSWORD, firmId: user.firmId, caseId: caseId! };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

@@ -58,6 +58,8 @@ export async function createDocument(
   caseId: string,
   input: CreateDocumentInput,
   file?: UploadedFile,
+  /** `background: false` stores the document without queuing embedding or the agents (demo data brings its own results). */
+  opts: { background?: boolean } = {},
 ): Promise<{ document: DocumentNode; created: boolean; warnings: string[] }> {
   if (!file && !input.text) throw ApiError.badRequest("Attach a file or provide text");
   if (file && input.text) throw ApiError.badRequest("Send either a file or text, not both");
@@ -164,7 +166,7 @@ export async function createDocument(
   }
 
   // EMBED and ANALYSE (background)
-  if (chunks.length) {
+  if (chunks.length && opts.background !== false) {
     queueDocumentEmbedding(id);
     queueDocumentAnalysis(id);
   }

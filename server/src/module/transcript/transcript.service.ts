@@ -78,7 +78,7 @@ async function linkSpeakers(transcriptId: string, mapping: Map<string, string | 
  * Stores a hearing transcript as a new version: numbered turns (Segments), speakers linked to
  * people, embeddings queued. Earlier versions are kept with `current: false`.
  */
-export async function createTranscript(hearingId: string, input: CreateTranscriptInput) {
+export async function createTranscript(hearingId: string, input: CreateTranscriptInput, opts: { background?: boolean } = {}) {
   const hearing = await requireHearing(hearingId);
   const overrides = input.speakerMap ?? {};
   await checkOverrides(hearing.caseId, overrides);
@@ -131,8 +131,10 @@ export async function createTranscript(hearingId: string, input: CreateTranscrip
 
   const mapping = await resolveSpeakers(hearing.caseId, hearingId, parsed.labels, overrides);
   await linkSpeakers(id, mapping);
-  queueTranscriptEmbedding(id);
-  queueTranscriptAnalysis(id);
+  if (opts.background !== false) {
+    queueTranscriptEmbedding(id);
+    queueTranscriptAnalysis(id);
+  }
 
   return { transcript: await getTranscript(hearingId), created: true };
 }

@@ -18,15 +18,15 @@ before(async () => {
 after(async () => srv.close());
 
 describe("demo seed through the API", () => {
-  it("has four case cards with what needs attention", async () => {
+  it("has five case cards with what needs attention", async () => {
     const res = await c.get("/cases");
     assert.equal(res.status, 200, JSON.stringify(res.body));
-    assert.equal(res.body.data.length, 4);
+    assert.equal(res.body.data.length, 5);
     const kumar = res.body.data.find((x: { case: { id: string } }) => x.case.id === caseId);
     assert.equal(kumar.nextHearing.date, "2026-10-24");
     assert.equal(kumar.overdue, 1);
     assert.equal(kumar.newContradictions, 3);
-    assert.equal(kumar.linked.length, 1);
+    assert.equal(kumar.linked.length, 2);
     assert.equal(kumar.hearings, 10);
   });
 

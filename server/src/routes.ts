@@ -3,6 +3,7 @@ import { accountRouter, publicAuthRouter, requireAuth } from "./module/auth/inde
 import { caseRouter } from "./module/case/index.js";
 import { complianceRouter } from "./module/compliance/index.js";
 import { dashboardRouter } from "./module/dashboard/index.js";
+import { demoRouter } from "./module/demo/index.js";
 import { documentRouter } from "./module/document/index.js";
 import { factCheckRouter } from "./module/factcheck/index.js";
 import { healthRouter } from "./module/health/health.routes.js";
@@ -22,6 +23,7 @@ apiRouter.use(accountRouter);
 // Everything below needs a signed-in user; each router also checks that ids belong to the user's firm.
 apiRouter.use(requireAuth);
 apiRouter.use(dashboardRouter);
+apiRouter.use(demoRouter);
 apiRouter.use(caseRouter);
 apiRouter.use(hearingRouter);
 apiRouter.use(documentRouter);
