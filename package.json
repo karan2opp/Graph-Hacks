@@ -4,6 +4,8 @@
   "private": true,
   "description": "Court Case Memory Agent - Graph Hacks (WeMakeDevs x FalkorDB), Track 2",
   "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
     "install:all": "npm --prefix server install && npm --prefix client install",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",

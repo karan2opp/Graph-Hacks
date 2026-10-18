@@ -712,8 +712,19 @@ export async function seed() {
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const { connectFalkorDB, disconnectFalkorDB } = await import("../common/db/index.js");
   const { initGraphSchema } = await import("../module/graph/index.js");
-  await connectFalkorDB();
-  await initGraphSchema();
+  // FalkorDB may still be starting (right after `docker compose up -d`): retry for up to a minute.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await connectFalkorDB();
+      await initGraphSchema();
+      break;
+    } catch (e) {
+      await disconnectFalkorDB().catch(() => undefined);
+      if (attempt >= 30) throw e;
+      console.log(`Waiting for FalkorDB (${(e as Error).message})...`);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
   const out = await seed();
   console.log(`\nDemo ready. Sign in with ${out.email} / ${out.password}\n`);
   await disconnectFalkorDB();
