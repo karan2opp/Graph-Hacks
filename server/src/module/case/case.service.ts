@@ -24,20 +24,21 @@ export async function requireCase(caseId: string): Promise<CaseNode> {
   return row.c;
 }
 
-export async function createCase(input: CreateCaseInput): Promise<CaseNode> {
+export async function createCase(firmId: string, input: CreateCaseInput): Promise<CaseNode> {
   const dup = await queryOne(
-    "MATCH (c:Case {caseNumber: $caseNumber, court: $court}) RETURN c.id AS id",
-    { caseNumber: input.caseNumber, court: input.court },
+    "MATCH (c:Case {caseNumber: $caseNumber, court: $court, firmId: $firmId}) RETURN c.id AS id",
+    { caseNumber: input.caseNumber, court: input.court, firmId },
   );
   if (dup) throw ApiError.conflict(`Case ${input.caseNumber} already exists in ${input.court}`);
 
   const now = nowIso();
   const row = await queryOne<{ c: CaseNode }>(
-    `CREATE (c:Case {id: $id, caseNumber: $caseNumber, title: $title, court: $court, caseType: $caseType,
+    `CREATE (c:Case {id: $id, firmId: $firmId, caseNumber: $caseNumber, title: $title, court: $court, caseType: $caseType,
        stage: $stage, status: 'open', filedOn: $filedOn, description: $description, createdAt: $now, updatedAt: $now})
      RETURN c {.*} AS c`,
     {
       id: randomUUID(),
+      firmId,
       ...input,
       filedOn: input.filedOn ?? null,
       description: input.description ?? null,
@@ -54,18 +55,6 @@ export async function updateCase(caseId: string, input: UpdateCaseInput): Promis
     { caseId, patch: input, now: nowIso() },
   );
   return row!.c;
-}
-
-export async function listCases() {
-  return runQuery<{ case: CaseNode; hearings: number; documents: number; nextHearing: string | null }>(
-    `MATCH (c:Case)
-     OPTIONAL MATCH (c)-[:HAS_HEARING]->(h:Hearing)
-     WITH c, count(h) AS hearings, min(CASE WHEN h.status = 'scheduled' THEN h.date END) AS nextHearing
-     OPTIONAL MATCH (d:Document)-[:BELONGS_TO]->(c)
-     WITH c, hearings, nextHearing, count(d) AS documents
-     RETURN c {.*} AS case, hearings, documents, nextHearing
-     ORDER BY c.createdAt DESC`,
-  );
 }
 
 export async function getCaseOverview(caseId: string) {
@@ -102,3 +91,4 @@ export async function linkCases(caseId: string, linkedCaseId: string, reason?: s
   );
   return getCaseOverview(caseId);
 }
+

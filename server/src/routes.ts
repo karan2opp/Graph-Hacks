@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { mediaRouter } from "./common/media/index.js";
+import { accountRouter, publicAuthRouter, requireAuth } from "./module/auth/index.js";
 import { caseRouter } from "./module/case/index.js";
 import { complianceRouter } from "./module/compliance/index.js";
+import { dashboardRouter } from "./module/dashboard/index.js";
 import { documentRouter } from "./module/document/index.js";
 import { factCheckRouter } from "./module/factcheck/index.js";
 import { healthRouter } from "./module/health/health.routes.js";
@@ -13,8 +14,14 @@ import { transcriptRouter } from "./module/transcript/index.js";
 /** All routers are mounted here under /api/v1. Feature routers declare their full paths. */
 export const apiRouter = Router();
 
+// Public
 apiRouter.use("/health", healthRouter);
-apiRouter.use("/media", mediaRouter);
+apiRouter.use(publicAuthRouter);
+apiRouter.use(accountRouter);
+
+// Everything below needs a signed-in user; each router also checks that ids belong to the user's firm.
+apiRouter.use(requireAuth);
+apiRouter.use(dashboardRouter);
 apiRouter.use(caseRouter);
 apiRouter.use(hearingRouter);
 apiRouter.use(documentRouter);

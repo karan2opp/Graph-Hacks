@@ -12,6 +12,9 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: num(5000),
   CLIENT_URL: str("http://localhost:5173"),
+  SESSION_TTL_DAYS: num(14),
+  // "none" when the client and API live on different sites (needs HTTPS).
+  COOKIE_SAMESITE: z.preprocess(emptyToUndefined, z.enum(["lax", "strict", "none"]).default("lax")),
 
   FALKORDB_HOST: str("localhost"),
   FALKORDB_PORT: num(6379),

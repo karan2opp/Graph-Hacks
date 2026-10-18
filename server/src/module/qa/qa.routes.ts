@@ -1,3 +1,4 @@
+import { aiLimit, guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { z } from "zod";
 import { validate } from "../../common/middleware/index.js";
@@ -7,6 +8,7 @@ import { askCase } from "./qa.agent.js";
 import { getConversation, listConversations } from "./qa.memory.js";
 
 export const qaRouter = Router();
+guardParams(qaRouter);
 
 const askBody = z.object({
   question: z.string().trim().min(2).max(2000),
@@ -15,7 +17,7 @@ const askBody = z.object({
 });
 
 /** POST /cases/:caseId/ask  -> answer, citations, tools used, evidence graph */
-qaRouter.post("/cases/:caseId/ask", validate({ params: caseIdParams, body: askBody }), async (req, res) => {
+qaRouter.post("/cases/:caseId/ask", aiLimit, validate({ params: caseIdParams, body: askBody }), async (req, res) => {
   const r = ApiRequest.from<z.infer<typeof askBody>, unknown, { caseId: string }>(req);
   ApiResponse.ok(await askCase({ caseId: r.params.caseId, ...r.body }), "Answered").send(res);
 });

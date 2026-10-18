@@ -50,19 +50,3 @@ export async function uploadMedia(
     size: res.size ?? file.buffer.length,
   };
 }
-
-export async function deleteMedia(fileId: string): Promise<void> {
-  await getClient().files.delete(fileId);
-}
-
-/** Short-lived signature so the browser can upload straight to ImageKit (large videos). */
-export function getClientUploadAuth() {
-  if (!env.IMAGEKIT_PUBLIC_KEY) {
-    throw ApiError.serviceUnavailable("ImageKit is not configured (set IMAGEKIT_PUBLIC_KEY)");
-  }
-  return {
-    ...getClient().helper.getAuthenticationParameters(),
-    publicKey: env.IMAGEKIT_PUBLIC_KEY,
-    urlEndpoint: env.IMAGEKIT_URL_ENDPOINT,
-  };
-}

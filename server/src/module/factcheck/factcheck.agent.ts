@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { generateStructured, isAIEnabled } from "../../common/ai/index.js";
 import { nowIso, runQuery } from "../../common/db/index.js";
@@ -227,9 +228,9 @@ export async function factCheckClaims(caseId: string, newIds: string[]) {
       `UNWIND $rows AS row
        MATCH (a:Claim {id: row.from}), (b:Claim {id: row.to})
        WHERE NOT (a)-[:${type}]-(b)
-       CREATE (a)-[:${type} {category: row.props.category, severity: row.props.severity, reason: row.props.reason, fact: row.props.fact,
+       CREATE (a)-[:${type} {id: row.id, category: row.props.category, severity: row.props.severity, reason: row.props.reason, fact: row.props.fact,
          detectedBy: 'fact-check-agent', createdAt: $now}]->(b)`,
-      { rows, now: nowIso() },
+      { rows: rows.map((r) => ({ ...r, id: randomUUID() })), now: nowIso() },
     );
     counts[type.toLowerCase() as "contradicts" | "disputes" | "supports"] = rows.length;
   }

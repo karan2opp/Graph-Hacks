@@ -40,7 +40,9 @@ Every reference resolves to a real node in the graph, and the response includes 
 |---|---|
 | Graph + vector DB | FalkorDB (Docker) |
 | Server | Node.js, Express 5, TypeScript, zod |
-| Client | React 19, Vite, TypeScript |
+| Client | React 19, Vite, TypeScript, React Router, TanStack Query (plain CSS, court theme) |
+| Accounts | Firms, users and sessions in the graph; scrypt passwords; httpOnly session cookie |
+| Tests | `node:test` against a throwaway graph (API), Playwright (UI) |
 | Files (PDFs, images, video) | ImageKit. The graph stores only the URL |
 | Extraction, OCR | OpenAI `gpt-4o-mini` |
 | Verdicts, Q&A | OpenAI `gpt-5.4-mini` |
@@ -59,17 +61,30 @@ cp client/.env.example client/.env      # optional in dev
 
 npm run db:up                           # FalkorDB on :6379, FalkorDB Browser on http://localhost:3000
 
+npm run seed                            # demo firm + Kumar v. Gupta (works without OpenAI)
+
 npm run dev:server                      # http://localhost:5000/api/v1
 npm run dev:client                      # http://localhost:5173
 ```
 
 `curl http://localhost:5000/api/v1/health` should report `falkordb: up`, `openai: configured`.
 
+Sign in at http://localhost:5173 with `demo@casememory.test` / `casememory-demo-2026` (or `SEED_PASSWORD`), or create your own firm. The seed writes the agents' results straight into the graph, so every screen works before an OpenAI key is set; new uploads are read by the agents once it is.
+
+### Accounts and access
+
+- **Firms.** Signing up creates a firm and makes you its owner. Owners invite colleagues by email from *Firm and settings*; an invite link works once, for 7 days, and only for that email address. Owners can remove members, which also ends their sessions.
+- **Sessions.** Passwords are hashed with scrypt. Signing in sets an httpOnly cookie holding a random token; only its SHA-256 is stored (`Session` node). Sign-in and sign-up are rate-limited per IP and email.
+- **Isolation.** Every case belongs to one firm (`Case.firmId`). Every route that takes an id (`caseId`, `hearingId`, `documentId`, `transcriptId`, `claimId`, `directionId`, `conversationId`, `linkId`) resolves it to its case and checks the firm, answering 404 for anything else, so ids cannot be probed.
+- **Deploying the client and API on different sites** (for example Vercel and Render): either proxy `/api` from the client's host to the API (same-site, keep `COOKIE_SAMESITE=lax`), or set `COOKIE_SAMESITE=none` over HTTPS and list the client in `CLIENT_URL`.
+
 ### Environment (`server/.env`)
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT`, `CLIENT_URL` | `5000`, `http://localhost:5173` | API port, allowed CORS origin(s) |
+| `SESSION_TTL_DAYS`, `COOKIE_SAMESITE` | `14`, `lax` | How long a sign-in lasts; `none` when client and API are on different sites (HTTPS only) |
+| `SEED_PASSWORD` | `casememory-demo-2026` | Password of the demo account created by `npm run seed` |
 | `FALKORDB_HOST`, `FALKORDB_PORT`, `FALKORDB_GRAPH` | `localhost`, `6379`, `court_memory` | FalkorDB connection and graph name |
 | `FALKORDB_USERNAME`, `FALKORDB_PASSWORD` | empty | For a hosted FalkorDB |
 | `IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_URL_ENDPOINT`, `IMAGEKIT_FOLDER` | empty, `/court-memory` | File storage |
@@ -78,21 +93,46 @@ npm run dev:client                      # http://localhost:5173
 | `OPENAI_REASONING_MODEL` | `gpt-5.4-mini` | Fact-check and compliance verdicts, Q&A |
 | `OPENAI_EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` | `text-embedding-3-small`, `1536` | Vectors on Chunk, Segment, Claim |
 
+## Design
+
+The UI design lives on a Claude Design canvas: **https://claude.ai/artifact/Db8dEvtVSdF3pm6uZUGvkK**
+
+It holds every screen of the app (cases, new case, brief, hearings, hearing and transcript, documents and viewer, add to memory, story drift, directions, ask, add hearing) and the landing page, laid out in the order of the user flow, plus notes on the visual language. Start any new screen from it so it reuses the same pieces:
+
+| On the canvas | In the code |
+|---|---|
+| Colours, type, wood and brass textures, ruled paper, stamps, pills, buttons | `client/src/styles/theme.css` (tokens on `:root`, classes like `.wood`, `.ruled`, `.stamp-*`, `.pill`, `.btn`) |
+| Bench header, case side menu | `client/src/components/TopBar.tsx`, `CaseLayout.tsx` |
+| Finding card (two quotes, stamp, reason, actions), source refs | `client/src/components/Findings.tsx` |
+| Fields, banners, empty and error states, skeletons | `client/src/components/ui.tsx` |
+| Landing page and the typewriter scroll story | `client/src/pages/Landing.tsx`, `client/src/pages/landing/` |
+
+Visual language: ledger-green ground, blue-black ink, mahogany bench with a brass rule; red tape for contradictions and overdue items, blue for in force or support, violet for disputes, green for complied; statuses as rubber stamps; anything quoted from the record in Courier Prime, headings in Spectral.
+
 ## Repo layout
 
 ```
 .
 ├── client/                    React + TypeScript (Vite)
+│   ├── src/pages/             landing, sign-in, cases, new case, brief, hearings, documents + viewer,
+│   │                          add to memory, story drift, directions, ask, settings
+│   ├── src/components/        bench header, case menu, findings, shared UI
+│   ├── src/lib/               API client, auth guard, query keys, formatting
+│   ├── src/styles/theme.css   the court theme (ledger green, ink, mahogany, brass, red tape)
+│   └── e2e/                   Playwright specs
+├── server/test/               API tests: auth, firm isolation, seeded demo through the API
 ├── server/src/
 │   ├── common/                shared building blocks
 │   │   ├── utils/             ApiError, ApiResponse, ApiRequest, validators (nameKey, todayIST)
 │   │   ├── middleware/        requestId, validate (zod), error handler
 │   │   ├── db/                FalkorDB connection, runQuery / queryOne
 │   │   ├── ai/                OpenAI: embeddings, OCR, structured output
-│   │   ├── media/             ImageKit client, upload middleware, /media routes
+│   │   ├── media/             ImageKit client, upload middleware
 │   │   └── types/             Express request typing
 │   ├── module/
 │   │   ├── graph/             labels and indexes (range + vector)
+│   │   ├── auth/              firms, users, sessions, invites, firm checks on every id, rate limit
+│   │   ├── dashboard/         case cards, firm dashboard, case brief
 │   │   ├── case/              cases, people (party, lawyer, judge, witness), case links
 │   │   ├── hearing/           hearings, NEXT timeline, appearances, adjournments
 │   │   ├── document/          upload / paste, chunks
@@ -103,6 +143,7 @@ npm run dev:client                      # http://localhost:5173
 │   │   ├── compliance/        compliance agent: directions state, overrides, report
 │   │   ├── qa/                Q&A agent: tools, citations, evidence graph, conversation memory
 │   │   └── health/            GET /health
+│   ├── scripts/               seed (demo data), e2e-server
 │   ├── config/env.ts          validated environment
 │   ├── routes.ts, app.ts, index.ts
 ├── docker-compose.yml         FalkorDB + browser UI
@@ -160,11 +201,27 @@ All paths are under `/api/v1`. Every response has the same shape:
 
 In server code: throw `ApiError.notFound()` / `ApiError.validation([...])`, respond with `ApiResponse.ok(data).send(res)`, read input with `ApiRequest.from(req)`, validate with `validate({ body, query, params })`.
 
+Everything except `/health`, `/auth/register`, `/auth/login`, `/auth/logout` and `GET /invites/:token` needs a session (401 otherwise), and only reaches the signed-in user's firm (404 otherwise).
+
+**Accounts**
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/auth/register` | `{ name, email, password, firmName }` starts a firm; `{ name, email, password, inviteToken }` joins one. Sets the session cookie |
+| POST | `/auth/login`, `/auth/logout` | Sign in (rate-limited) / out |
+| GET | `/auth/me` | The signed-in user, firm and role |
+| GET | `/firm` | Members and pending invites |
+| POST | `/firm/invites` | Owner: invite `{ email, role? }`, returns a one-time token |
+| GET | `/invites/:token` | Public: which firm and email an invite is for |
+| DELETE | `/firm/members/:userId` | Owner: remove a member (ends their sessions) |
+
 **Cases and people**
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST / GET | `/cases` | Create / list cases |
+| POST / GET | `/cases` | Create / list the firm's cases with next hearing, overdue directions and new contradictions |
+| GET | `/dashboard` | Across the firm: overdue directions, the next hearing, new contradictions this week |
+| GET | `/cases/:caseId/brief` | Case home: next hearing, overdue and due-before-next directions, contradictions for cross, timeline, agent activity |
 | GET / PATCH | `/cases/:caseId` | Overview (linked cases, counts) / update stage, status |
 | POST | `/cases/:caseId/links` | Link two cases `{ linkedCaseId, reason }` |
 | POST / GET | `/cases/:caseId/people` | Add / list parties, lawyers, judges, witnesses |
@@ -188,11 +245,12 @@ In server code: throw `ApiError.notFound()` / `ApiError.validation([...])`, resp
 |---|---|---|
 | GET | `/cases/:caseId/claims?personId=&subjectId=&sourceId=` | Claims with who, about what and the exact source |
 | GET | `/cases/:caseId/subjects` | Subjects with claim counts |
-| POST | `/documents/:documentId/analyze`, `/transcripts/:transcriptId/analyze` | Re-run the intake agent on one source |
-| GET | `/cases/:caseId/contradictions?category=self\|same_side\|record` | Contradictions with both citations and the reason |
-| GET | `/cases/:caseId/disputes` | Points where the two sides disagree |
+| POST | `/documents/:documentId/analyze`, `/transcripts/:transcriptId/analyze` | Re-run the intake agent on one source in the background (202; 503 without an OpenAI key) |
+| GET | `/cases/:caseId/contradictions?category=self\|same_side\|record&includeDismissed=` | Contradictions with both citations and the reason |
+| GET | `/cases/:caseId/disputes?includeDismissed=` | Points where the two sides disagree |
 | GET | `/claims/:claimId/related` | What contradicts, disputes or supports one claim |
-| POST | `/cases/:caseId/factcheck` | Re-check every claim of the case |
+| PATCH | `/links/:linkId` | A lawyer's review of one finding `{ dismissed?, crossPrep?, note? }` |
+| POST | `/cases/:caseId/factcheck` | Re-check every claim of the case in the background (202) |
 | GET | `/cases/:caseId/directions?status=pending\|overdue\|complied\|in_force\|vacated` | Directions with state, assignees and evidence |
 | GET | `/cases/:caseId/compliance` | Overdue, due before the next hearing, complied, in force, vacated, per-party record |
 | PATCH | `/directions/:directionId` | Lawyer override `{ status: complied\|not_complied\|vacated\|auto, note }` |
@@ -204,7 +262,6 @@ In server code: throw `ApiError.notFound()` / `ApiError.validation([...])`, resp
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | FalkorDB, ImageKit and OpenAI status |
-| POST / GET / DELETE | `/media/upload`, `/media/auth`, `/media/:fileId` | Direct ImageKit operations |
 
 ## FalkorDB
 
@@ -219,5 +276,11 @@ In server code: throw `ApiError.notFound()` / `ApiError.validation([...])`, resp
 |---|---|
 | `npm run db:up` / `db:down` / `db:logs` | Manage the FalkorDB container |
 | `npm run dev:server` / `dev:client` | Dev servers with reload |
+| `npm run seed` | Reset and load the demo firm (`demo@casememory.test`) and its four cases |
 | `npm run build` | Build server and client |
-| `npm run typecheck` | Typecheck server and client |
+| `npm run typecheck` / `lint` | Typecheck server and client / lint the client |
+| `npm test` | API tests (`node:test`) against a throwaway graph `court_memory_test` |
+| `npm run e2e` | Playwright: starts a seeded API on :5055 (graph `court_memory_e2e`) and the client on :5174, then drives the browser |
+| `npm run check` | All of the above, in order |
+
+Tests need FalkorDB running (`npm run db:up`) and never call OpenAI or ImageKit. First Playwright run: `npx --prefix client playwright install chromium`.

@@ -46,3 +46,10 @@ function pump(lane: Lane) {
 
 export const queueStats = () =>
   Object.fromEntries(Object.entries(lanes).map(([k, l]) => [k, { active: l.active, pending: l.pending.length }]));
+
+/** Resolves once every lane is empty (used by the demo seed before it fills in agent results). */
+export async function whenIdle(): Promise<void> {
+  while (Object.values(lanes).some((l) => l.active || l.pending.length)) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}

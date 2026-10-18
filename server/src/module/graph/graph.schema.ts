@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { env } from "../../config/env.js";
 import { getGraph } from "../../common/db/index.js";
 
@@ -19,6 +20,11 @@ export const NODE_LABELS = [
   "Message",
   "Person",
   ...PERSON_KINDS,
+  // Accounts
+  "Firm",
+  "User",
+  "Session",
+  "Invite",
 ] as const;
 export type NodeLabel = (typeof NODE_LABELS)[number];
 
@@ -28,6 +34,13 @@ export const VECTOR_LABELS = ["Chunk", "Segment", "Claim"] as const;
 /** Extra range indexes for the lookups the API and agents do most. */
 const PROPERTY_INDEXES: [NodeLabel, string][] = [
   ["Case", "caseNumber"],
+  ["Case", "firmId"],
+  ["User", "email"],
+  ["Session", "tokenHash"],
+  ["Session", "userId"],
+  ["Invite", "tokenHash"],
+  ["Claim", "caseId"],
+  ["Direction", "caseId"],
   ["Hearing", "caseId"],
   ["Hearing", "date"],
   ["Document", "caseId"],
@@ -40,7 +53,6 @@ const PROPERTY_INDEXES: [NodeLabel, string][] = [
   ["Person", "caseId"],
   ["Person", "nameKey"],
   ["Direction", "status"],
-  ["Direction", "dueDate"],
   ["Conversation", "caseId"],
 ];
 
@@ -51,6 +63,16 @@ async function ensure(query: string) {
     await getGraph().query(query);
   } catch (e) {
     if (!isAlreadyIndexed(e)) throw e;
+  }
+}
+
+/** Fact-check links get an id so a lawyer can dismiss or flag one. Older links get one here. */
+async function backfillLinkIds() {
+  const res = await getGraph().query<{ rid: number }>(
+    "MATCH (:Claim)-[r:CONTRADICTS|DISPUTES|SUPPORTS]->(:Claim) WHERE r.id IS NULL RETURN ID(r) AS rid",
+  );
+  for (const { rid } of res.data ?? []) {
+    await getGraph().query("MATCH ()-[r]->() WHERE ID(r) = $rid SET r.id = $id", { params: { rid, id: randomUUID() } });
   }
 }
 
@@ -68,5 +90,8 @@ export async function initGraphSchema(): Promise<void> {
       `CREATE VECTOR INDEX FOR (n:${label}) ON (n.embedding) OPTIONS {dimension: ${env.EMBEDDING_DIMENSIONS}, similarityFunction: 'cosine'}`,
     );
   }
+  // A range index on Direction.dueDate made 'dueDate < $today' return future dates (FalkorDB string range bug), so it is dropped.
+  await getGraph().query("DROP INDEX ON :Direction(dueDate)").catch(() => undefined);
+  await backfillLinkIds();
   console.log("FalkorDB schema ready");
 }

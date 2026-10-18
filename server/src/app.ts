@@ -8,11 +8,13 @@ import { apiRouter } from "./routes.js";
 
 export function createApp() {
   const app = express();
+  // Behind Render/Vercel the client IP comes from X-Forwarded-For (used by the sign-in rate limit).
+  if (isProd) app.set("trust proxy", 1);
 
   app.use(requestId);
   app.use(helmet());
   app.use(cors({ origin: env.CLIENT_URL.split(","), credentials: true }));
-  app.use(morgan(isProd ? "combined" : "dev"));
+  if (env.NODE_ENV !== "test") app.use(morgan(isProd ? "combined" : "dev"));
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ extended: true }));
 

@@ -1,3 +1,4 @@
+import { aiLimit, guardParams } from "../auth/index.js";
 import { Router } from "express";
 import { validate } from "../../common/middleware/index.js";
 import { ApiRequest, ApiResponse } from "../../common/utils/index.js";
@@ -13,10 +14,12 @@ import {
 import { createTranscript, getTranscript, listTranscriptVersions, updateSpeakers } from "./transcript.service.js";
 
 export const transcriptRouter = Router();
+guardParams(transcriptRouter);
 
 /** POST /hearings/:hearingId/transcripts  { text, speakerMap? } -> new version */
 transcriptRouter.post(
   "/hearings/:hearingId/transcripts",
+  aiLimit,
   validate({ params: hearingIdParams, body: createTranscriptBody }),
   async (req, res) => {
     const r = ApiRequest.from<CreateTranscriptInput, unknown, { hearingId: string }>(req);

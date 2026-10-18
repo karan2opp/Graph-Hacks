@@ -2,7 +2,7 @@
 
 > Graph Hacks: Context for AI Agents (WeMakeDevs x FalkorDB) | Oct 15-18, 2026 | Track 2: Agent Memory and Coordination
 >
-> Status as of Oct 17: backend complete (ingestion + intake, fact-check, compliance and Q&A agents). Remaining: UI, demo seed, hearing brief, deployment, video, blog.
+> Status as of Oct 17 (evening): backend, firm accounts, web app (13 screens + landing), demo seed and tests done. Remaining: live run of the agents with an OpenAI key, deployment, video, blog.
 
 ## 1. What We Are Building
 
@@ -12,13 +12,17 @@ An agent system that gives a court case a memory, for **lawyers**. Every hearing
 
 **Scope:** Indian courts, civil and criminal. An FIR is just another document, so cases with and without police involvement share one model.
 
+**Design:** every screen and the landing page are on the Claude Design canvas at https://claude.ai/artifact/Db8dEvtVSdF3pm6uZUGvkK. New screens should start from it; the README's Design section maps its pieces to the components in `client/src`.
+
 ## 2. Tech Stack
 
 | Layer | Choice | Notes |
 |---|---|---|
 | Graph + vector DB | **FalkorDB** (Docker) | Graph and vector indexes on the same nodes |
 | Server | Node.js, Express 5, TypeScript | Official `falkordb` client, zod validation |
-| Client | React 19, Vite, TypeScript | Case page, timeline, alerts, chat, evidence graph |
+| Client | React 19, Vite, TypeScript, React Router, TanStack Query | Plain CSS court theme: ledger green, ink, mahogany, brass, red tape; Spectral / IBM Plex Sans / Courier Prime |
+| Accounts | In the graph, `node:crypto` only | scrypt passwords, httpOnly session cookie (token hashed), invites, rate-limited sign-in |
+| Tests | `node:test` + Playwright | API against a throwaway graph; browser flows against a seeded API |
 | File storage | **ImageKit** | Original files only. Nodes keep `fileUrl` |
 | Extraction, OCR | OpenAI `gpt-4o-mini` (`OPENAI_CHAT_MODEL`) | Claims, directions, image OCR |
 | Judgments, Q&A | OpenAI `gpt-5.4-mini` (`OPENAI_REASONING_MODEL`) | Fact-check and compliance verdicts; Q&A tool calling (reasoning off: the API does not allow tools with reasoning on Chat Completions) |
@@ -48,7 +52,7 @@ People are scoped to a case and de-duplicated by normalised name (`nameKey`).
 ### Things
 | Node | Properties |
 |---|---|
-| `Case` | caseNumber, title, court, caseType (civil/criminal), stage, status |
+| `Case` | firmId, caseNumber, title, court, caseType (civil/criminal), stage, status |
 | `Hearing` | date, purpose, status (scheduled/held), adjourned, adjournmentReason, outcome |
 | `Document` | title, type, date, filedOn, fileUrl, hash, status (embedding), analysis (intake), orderKind, summary, nextDate (orders), private (lawyer notes) |
 | `Chunk` | page, para, paraLabel (the document's own para number), seq, text, embedding |
@@ -58,6 +62,16 @@ People are scoped to a case and de-duplicated by normalised name (`nameKey`).
 | `Claim` | text, quote, quoteVerified, kind (allegation, denial, admission, fact, undertaking), eventDate, statedOn, sourceId, internal, superseded, embedding |
 | `Subject` | name, type (property, money, document, event...) |
 | `Conversation`, `Message` | Q&A memory: role, text, citations, trace |
+
+### Accounts
+| Node | Properties |
+|---|---|
+| `Firm` | name |
+| `User` | email (unique), name, passwordHash (scrypt) |
+| `Session` | tokenHash (SHA-256 of the cookie token), userId, expiresAt |
+| `Invite` | tokenHash, email, role, expiresAt, usedAt |
+
+`(User)-[:MEMBER_OF {role: owner|member}]->(Firm)`, `(Invite)-[:FOR_FIRM]->(Firm)`. Cases carry `firmId` as a property (indexed) rather than an edge, since every query filters by it.
 
 ### Edges
 | Edge | Meaning |
@@ -85,7 +99,7 @@ People are scoped to a case and de-duplicated by normalised name (`nameKey`).
 | `(Chunk\|Segment)-[:CONTAINS]->(Claim)` | Exact citation of each claim |
 | `(Claim)-[:MADE_BY]->(Person)`, `(Claim)-[:ON_BEHALF_OF]->(Party)` | Who asserted it, and for whom (lawyers, witnesses) |
 | `(Claim)-[:ABOUT]->(Subject)` | What it concerns |
-| `(Claim)-[:CONTRADICTS {category, severity, reason, fact}]->(Claim)` | Same person over time, same side, or against a document of record |
+| `(Claim)-[:CONTRADICTS {id, category, severity, reason, fact, dismissed, crossPrep, note}]->(Claim)` | Same person over time, same side, or against a document of record. The lawyer can dismiss a finding or flag it for cross-examination (same fields on `DISPUTES` / `SUPPORTS`) |
 | `(Claim)-[:DISPUTES]->(Claim)` | Opposite sides disagreeing: the dispute itself |
 | `(Claim)-[:SUPPORTS]->(Claim)` | Corroboration |
 | `(Case)-[:HAS_CONVERSATION]->(Conversation)-[:HAS_MESSAGE]->(Message)-[:CITES]->(…)` | Q&A memory linked to the evidence each answer used |
@@ -116,7 +130,8 @@ Rules that keep the data healthy as it grows:
 - **Provenance everywhere:** derived nodes keep `sourceId` and `createdBy`, so re-analysing a source replaces only what came from it. A lawyer's override is carried over.
 - **Idempotent writes:** hash for files, `MERGE` on natural keys. Unfinished jobs resume on restart; jobs wait for an OpenAI key if none is set.
 - **Analysis runs one source at a time**, so each document sees the subjects the previous one created and the same payment is never recorded twice.
-- **One graph per firm** later (`selectGraph(firmId)`).
+- **Firm isolation:** one shared graph; every case has a `firmId` and every route id (case, hearing, document, transcript, claim, direction, conversation, finding) is resolved to its case and checked against the signed-in firm, answering 404 otherwise. One graph per firm (`selectGraph(firmId)`) remains an option for scale.
+- **Re-analysis runs in the background:** `POST .../analyze` and `/factcheck` answer 202 and the UI polls the document's status.
 
 ## 6. Agents
 
@@ -128,7 +143,7 @@ All agents read and write the same graph: it is their shared memory and how they
 | **Fact-check** | Built | Compares each new claim with earlier ones found via the graph (same subject, same person) and by meaning. Uses `MADE_BY` → `REPRESENTS`/`CALLED_BY` → party role to know each claim's side. Writes `CONTRADICTS` / `DISPUTES` / `SUPPORTS` with a reason. The model must answer "can both be true?" first |
 | **Compliance** | Built | Links directions to the filing or later order that satisfied them (`COMPLIED_BY`, on time / days late, using `filedOn`), records non-compliance and vacation noted in later orders, back-fills when uploads arrive out of order. Lawyer override never touched by the agent. Transcripts are not evidence |
 | **Case Q&A** | Built | Tool-calling agent over 12 fixed graph tools. Every sentence cites `[S#]` refs registered on the server; returns the tools/patterns it used and the evidence subgraph; conversations stored in the graph |
-| **Hearing brief** | To do | One-page brief before a hearing: overdue and upcoming directions, recent hearings, contradictions, what transcripts said, all cited |
+| **Hearing brief** | Built (graph only) | The case brief (`GET /cases/:id/brief` and the Brief screen): next hearing, overdue and due-before-next directions, contradictions to raise, timeline, agent activity, all linked to sources. A model-written narrative brief is still to do |
 | **Handover** | Stretch | Full case history for a new lawyer |
 
 ## 7. Key Decisions
@@ -145,6 +160,12 @@ All agents read and write the same graph: it is their shared memory and how they
 | Manual override for directions | Fees paid at the counter or costs paid in court never reach the system |
 | `filedOn` separate from document `date` | A 2019 sale deed filed in 2021 complies with a 2021 order |
 | Dates compared in IST | Deadlines and "overdue" follow Indian court days |
+| Firm workspaces with owner/member roles | Several lawyers of a firm share cases; owners control who joins |
+| Session cookie, not tokens in the browser | httpOnly cookie can't be read by scripts; only the token's hash is stored |
+| 404 for another firm's ids | Doesn't reveal that a case or document exists |
+| Seed writes the agents' results directly | The demo works with no OpenAI key; uploads still go through the real agents once a key is set |
+| No range index on `Direction.dueDate` | FalkorDB returned future dates for `dueDate < $today` through that string index; overdue is worked out by the compliance service in one place |
+| Ask box stays usable without the AI | A disabled field felt broken; asking explains what is missing and keeps the question |
 
 ## 8. Build Plan
 
@@ -153,19 +174,21 @@ All agents read and write the same graph: it is their shared memory and how they
 | **Day 1 (Oct 15)** | Repo, Docker FalkorDB, Express skeleton, ImageKit | Done |
 | **Day 2 (Oct 16)** | Graph schema, cases/people/hearings, document + transcript ingestion, embeddings, intake agent | Done |
 | **Day 3 (Oct 17)** | Fact-check, compliance and Q&A agents | Done |
-| | React UI: case page, timeline, alerts, upload, chat with citations, evidence graph | In progress |
-| | Seeded demo case | To do |
-| **Day 4 (Oct 18)** | Hearing brief, deploy, demo video, README, blog post. Submit before 11:59 PM IST | To do |
+| | Firm accounts, sessions, invites and per-firm access checks | Done |
+| | Web app: landing, sign-in, cases, new case, brief, hearings, documents + viewer, add to memory, story drift, directions, ask, settings | Done |
+| | Seeded demo case, API tests (23), Playwright tests (13) | Done |
+| **Day 4 (Oct 18)** | Live agent run with an OpenAI key, deploy, demo video, blog post. Submit before 11:59 PM IST | To do |
 
 ## 9. Demo Plan
 
-One synthetic property dispute (O.S. 123/2021, Ramesh Kumar v. Suresh Gupta, property No. 14, Lajpat Nagar) with a linked criminal case (FIR as a document) and planted issues:
-1. **Ignored direction:** the defendant's costs never paid; the written statement filed 39 days late.
-2. **Self-contradiction:** the 2021 written statement denies receiving Rs. 5,00,000; the 2023 affidavit admits receiving it "as a loan".
-3. **Contradicted by record:** the sale deed acknowledges receipt of the same amount.
-4. **Witness vs FIR:** a witness's court testimony contradicts the FIR.
+`npm run seed` loads one firm (`demo@casememory.test`) with four cases. The main one is a synthetic recovery suit, CS 412/2020, Ramesh Kumar v. Suresh Gupta, with a linked counter-suit (CS 98/2022), 10 hearings, 12 documents, a cross-examination transcript and these planted issues:
+1. **Late and overdue directions:** the written statement filed 39 days late; the plaintiff's rejoinder 11 days overdue; receipts due before the next hearing; a deposit order vacated; adjournment costs paid.
+2. **Self-contradiction:** the 2021 written statement denies receiving Rs. 5,00,000; the 2023 affidavit says it was received "as a friendly loan" and part repaid.
+3. **Contradicted by record:** the handwriting expert report matches the signature on the promissory note the defendant calls forged.
+4. **The other side drifts too:** in cross-examination the plaintiff admits a Rs. 2,00,000 repayment his plaint denied.
+5. **Problem documents:** a scanned note with no readable text, and an upload waiting for the AI agents.
 
-Flow: upload documents and a transcript and watch the graph grow; see the overdue and contradiction alerts; ask "list the orders from the last hearing" and "what has the defendant said about the payment?"; open the evidence graph behind the answer; generate the hearing brief.
+Flow: sign in and see what needs attention across cases; open the brief before the next hearing; read the transcript turn by turn and open what contradicts it; follow Story drift and flag findings for cross; check directions and override one; open a cited paragraph in the document viewer; with an OpenAI key, upload a document, watch it being read, and ask the case with cited answers and the evidence graph.
 
 ## 10. Scope and Risks
 
@@ -180,7 +203,9 @@ Flow: upload documents and a transcript and watch the graph grow; see the overdu
 - [x] FalkorDB is central to the product (graph + vector memory shared by all agents)
 - [x] Code and main FalkorDB implementation written during the event
 - [x] README with setup steps
-- [ ] UI and seeded demo case
+- [x] UI and seeded demo case
+- [x] Accounts, firm isolation, validation and error handling, with API and browser tests
+- [ ] Live run of the agents with an OpenAI key
 - [ ] Live deployment (or local setup instructions plus demo video)
 - [ ] Demo video
 - [ ] Blog post for the side prize
